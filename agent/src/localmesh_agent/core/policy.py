@@ -122,6 +122,28 @@ def validate_chat_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def validate_model_ref_payload(payload: dict[str, Any]) -> str:
+    """Validate an API-MODEL-02/03 `POST /models/load|unload` body (§13.2).
+
+    The contract body is exactly `{ "mesh_model_id": "lmstudio::…" }`; any
+    other field is outside the v1 allow-list. Returns the mesh_model_id;
+    raises `MeshError("INVALID_REQUEST", ...)` on violation (§13.4 envelope).
+    """
+    if not isinstance(payload, dict):
+        raise MeshError("INVALID_REQUEST", "Request body must be a JSON object.")
+    unknown = sorted(set(payload) - {"mesh_model_id"})
+    if unknown:
+        raise MeshError(
+            "INVALID_REQUEST",
+            "Request contains parameters outside the v1 allow-list (§13.2).",
+            details={"unknown_fields": unknown},
+        )
+    mesh_model_id = payload.get("mesh_model_id")
+    if not isinstance(mesh_model_id, str) or not mesh_model_id:
+        raise MeshError("INVALID_REQUEST", "'mesh_model_id' is required.")
+    return mesh_model_id
+
+
 def _validate_number(payload: dict[str, Any], key: str, low: float, high: float) -> None:
     value = payload.get(key)
     if value is None:

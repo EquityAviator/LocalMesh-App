@@ -48,6 +48,7 @@ from localmesh_agent.core.errors import MeshError
 from localmesh_agent.core.registry import CapabilityRegistry
 from localmesh_agent.core.router import Router
 from localmesh_agent.core.scheduler import Scheduler
+from localmesh_agent.core.warm import KeepWarmScheduler
 from localmesh_agent.observability.logging import configure_logging, get_logger
 from localmesh_agent.security.devices import DeviceService
 from localmesh_agent.security.pairing import PairingService
@@ -162,6 +163,31 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         max_queued=settings.limits.max_queued,
     )
     app.state.router = Router(registry, {a.id: a for a in adapters})
+
+    # -- WP-15 part 2 (§16.5, FR-MOD-05): keep-warm policy. The warm set comes
+    #    ONLY from the Appendix E override (`models.overrides[].keep_warm`);
+    #    pings go through the §10.2 keep_warm port (Ollama native ping; LM
+    #    Studio keep-warm is n/a per §10.3 and is never pinged). The
+    #    device-activity gate reads §14.1 last_seen_at via the Store —
+    #    non-revoked devices only (a revoked row must never count as active).
+    def _device_active_since(epoch_s: int) -> bool:
+        for row in store.list_devices():
+            if row.get("revoked_at") is not None:
+                continue
+            last_seen = row.get("last_seen_at")
+            if isinstance(last_seen, int) and last_seen >= epoch_s:
+                return True
+        return False
+
+    app.state.keep_warm = KeepWarmScheduler(
+        registry,
+        {a.id: a for a in adapters},
+        frozenset(
+            override.mesh_model_id for override in settings.models.overrides if override.keep_warm
+        ),
+        _device_active_since,
+        clock=clock,
+    )
     # §14.3 dev-mode Device identity (M1 loopback only; token auth is WP-08).
     app.state.dev_device_id = f"dv_{new_uuid7()}"
 
@@ -308,9 +334,13 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
                 "backend_id": ",".join(a.id for a in adapters) or None,
             },
         )
+        # WP-15 part 2 (§16.5, §10.6 order): the warm loop starts AFTER the
+        # registry is built/warm — it reads registry entries each tick.
+        app.state.keep_warm.start()
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        await app.state.keep_warm.stop()
         if app.state.mdns is not None:
             await app.state.mdns.stop()
             app.state.mdns = None

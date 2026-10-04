@@ -3,7 +3,7 @@
 import pytest
 
 from localmesh_agent.core.errors import MeshError
-from localmesh_agent.core.policy import validate_chat_payload
+from localmesh_agent.core.policy import validate_chat_payload, validate_model_ref_payload
 
 
 def test_valid_payload_passes() -> None:
@@ -86,3 +86,38 @@ def test_x_mesh_unknown_field_rejected() -> None:
 def test_missing_model_rejected() -> None:
     with pytest.raises(MeshError):
         validate_chat_payload({"messages": [{"role": "user", "content": "x"}]})
+
+
+# -- WP-15 part 2: validate_model_ref_payload (API-MODEL-02/03, §13.2) ---------
+
+
+def test_model_ref_accepts_minimal_body() -> None:
+    assert validate_model_ref_payload({"mesh_model_id": "lmstudio::qwen"}) == "lmstudio::qwen"
+
+
+def test_model_ref_missing_field_rejected() -> None:
+    with pytest.raises(MeshError) as excinfo:
+        validate_model_ref_payload({})
+    assert excinfo.value.code == "INVALID_REQUEST"
+
+
+def test_model_ref_unknown_field_rejected() -> None:
+    with pytest.raises(MeshError) as excinfo:
+        validate_model_ref_payload({"mesh_model_id": "lmstudio::qwen", "force": True})
+    assert excinfo.value.details is not None
+    assert excinfo.value.details["unknown_fields"] == ["force"]
+
+
+def test_model_ref_non_string_rejected() -> None:
+    with pytest.raises(MeshError):
+        validate_model_ref_payload({"mesh_model_id": 123})
+
+
+def test_model_ref_empty_string_rejected() -> None:
+    with pytest.raises(MeshError):
+        validate_model_ref_payload({"mesh_model_id": ""})
+
+
+def test_model_ref_non_object_rejected() -> None:
+    with pytest.raises(MeshError):
+        validate_model_ref_payload(["lmstudio::qwen"])  # type: ignore[list-item]

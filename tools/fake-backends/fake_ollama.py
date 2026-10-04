@@ -66,8 +66,12 @@ class FakeOllamaHandler(FakeHandler):
         return [{"name": m} for m in DEFAULT_ON_DISK]
 
     def ps_models(self, variant: str) -> list[dict[str, Any]]:
+        # WP-15 part 2: the in-memory set is SERVER state (mutated by demand-
+        # load on native chat / chat completions and by keep-warm pings), so
+        # adapter tests can observe a keep_warm() call flipping list state.
+        in_memory = sorted(self.server.in_memory)
         if variant == "c":
-            return [{"name": m, "model": m, "vram_bytes": 5000000000} for m in DEFAULT_IN_MEMORY]
+            return [{"name": m, "model": m, "vram_bytes": 5000000000} for m in in_memory]
         return [
             {
                 "name": m,
@@ -76,7 +80,7 @@ class FakeOllamaHandler(FakeHandler):
                 "size_vram": 5000000000,
                 "expires_at": "2026-01-01T00:05:00Z",
             }
-            for m in DEFAULT_IN_MEMORY
+            for m in in_memory
         ]
 
     def show_body(self) -> dict[str, Any]:
@@ -141,16 +145,29 @@ class FakeOllamaHandler(FakeHandler):
         if self.maybe_fail():
             return
         model = str(body.get("model") or DEFAULT_MODEL)
+        # Demand-load mirrors real behaviour: any chat request loads the model
+        # (keep_alive on the /v1 path is [UNVERIFIED] §6.2 — the fake ignores
+        # it, matching the safe assumption; CAPTURE.md probe will settle it).
+        self.server.in_memory.add(model)
         if body.get("stream"):
             self.stream_chat(model, pieces=["Hello", " from", " fake", " Ollama", "."], gap_ms=10)
             return
         self.send_json(self.non_stream_completion(model, "Hello from fake Ollama."))
 
     def native_chat(self, body: dict[str, Any]) -> None:
-        """NDJSON stream (Ollama native default). Shape UNVERIFIED — no fixture yet."""
+        """NDJSON stream (Ollama native default). Shape UNVERIFIED — no fixture yet.
+
+        WP-15 part 2: an empty-messages body is the §16.5/§6.2 keep-warm ping —
+        it loads the model and refreshes the idle timer, which the fake mirrors
+        by moving the model into `in_memory` (observable via `/api/ps`).
+        """
         if self.maybe_fail():
             return
         model = str(body.get("model") or DEFAULT_MODEL)
+        messages = body.get("messages")
+        if isinstance(messages, list) and not messages:
+            self.server.warm_pings[model] = self.server.warm_pings.get(model, 0) + 1
+        self.server.in_memory.add(model)
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.send_header("Connection", "close")
@@ -192,10 +209,18 @@ class FakeOllamaHandler(FakeHandler):
 
 
 class FakeOllama(FakeBackendServer):
-    """Ollama has no auth (§6.2): auth_token stays None by construction."""
+    """Ollama has no auth (§6.2): auth_token stays None by construction.
+
+    WP-15 part 2: `in_memory` starts as a copy of DEFAULT_IN_MEMORY and is
+    mutated by chat/native-chat demand-load and keep-warm pings (server state,
+    observable via /api/ps); `warm_pings` counts §16.5 keep-warm pings per
+    model for test assertions only (test-tool surface, no contract).
+    """
 
     def __init__(self, address: tuple[str, int], fixtures_dir: Path | None = None) -> None:
         super().__init__(address, FakeOllamaHandler, auth_token=None, fixtures_dir=fixtures_dir)
+        self.in_memory: set[str] = set(DEFAULT_IN_MEMORY)
+        self.warm_pings: dict[str, int] = {}
 
 
 def main() -> int:

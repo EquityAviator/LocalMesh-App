@@ -20,6 +20,25 @@ Format (append below, keep reverse-chronological order — newest first):
 Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARCH-001
 §24); agent-raised questions use QUESTION-101 onwards to avoid ID collisions.
 
+## QUESTION-106 — `POST /models/unload` response body state (§13.2)
+- Date: 2026-10-04
+- Raised by: WP-15 part 2 (API-MODEL-02/03 implementation, FR-MOD-04)
+- Question: §13.2 gives ONE contract line for the pair: "`POST /models/load|
+  unload` `{ "mesh_model_id": … }` → 202 `{"state":"loading"}`". For UNLOAD,
+  is the 202 body supposed to also read `{"state":"loading"}` (literal single-
+  line reading) or the mirrored `{"state":"unloaded"}` from the closed §13.5
+  state vocabulary (`loaded|unloaded|loading|unknown`)?
+- Context/evidence: LM-ARCH-001 §13.2 API-MODEL-02/03 (single line, no
+  unload-specific body) vs §13.5 state vocabulary; implementation at
+  agent/src/localmesh_agent/api/v1/models.py returns `unloaded` for unload.
+- Why we must not guess: the App's model-management UI renders this state
+  directly; a wrong literal would show "loading…" forever after unloads.
+- Default if unanswered: keep the mirrored `{"state":"unloaded"}` (the §13.5
+  vocabulary exists precisely to name states; `loading` for an unload is
+  contradictory on its face). Change is a one-line diff if overruled.
+  Not blocking M5 exit.
+- Status: OPEN
+
 ## QUESTION-105 — Does `--dev-insecure-loopback` (§17.9) waive Device Token auth?
 - Date: 2026-10-04
 - Raised by: WP-15 smoke QA (real uvicorn process on the dev loopback)

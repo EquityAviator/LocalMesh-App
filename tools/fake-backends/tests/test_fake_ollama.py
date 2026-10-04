@@ -151,3 +151,66 @@ def test_recorded_fixture_is_served_verbatim(make_ollama: Any, tmp_path: Any) ->
     body = resp.json()
     assert body["models"] == [{"name": "recorded-ollama-model"}]
     assert body[MARKER_KEY]["shape"] == RECORDED
+
+
+# -- WP-15 part 2: dynamic in-memory state (keep-warm observability) -----------
+
+
+def test_keep_warm_ping_loads_model_and_counts(make_ollama: Any) -> None:
+    """An empty-messages /api/chat body is the §16.5/§6.2 keep-warm ping: it
+    moves the model into the in-memory set (visible in /api/ps) and is
+    counted in `warm_pings` (test-tool surface only)."""
+    server = make_ollama()
+    target = "llama-fake:8b"  # on disk, NOT in memory by default
+    assert target not in server.in_memory
+
+    ps = httpx.get(f"{base_url(server)}/api/ps")
+    names = {m["name"] for m in ps.json()["models"]}
+    assert target not in names
+
+    ping = httpx.post(f"{base_url(server)}/api/chat", json={"model": target, "messages": []})
+    assert ping.status_code == 200
+
+    assert target in server.in_memory
+    assert server.warm_pings[target] == 1
+    ps2 = httpx.get(f"{base_url(server)}/api/ps")
+    names2 = {m["name"] for m in ps2.json()["models"]}
+    assert target in names2
+
+
+def test_native_chat_demand_loads_model(make_ollama: Any) -> None:
+    """Any native chat (non-empty messages) demand-loads the model too."""
+    server = make_ollama()
+    target = "llama-fake:8b"
+    assert target not in server.in_memory
+    resp = httpx.post(
+        f"{base_url(server)}/api/chat",
+        json={"model": target, "messages": [{"role": "user", "content": "Hi"}]},
+    )
+    assert resp.status_code == 200
+    assert target in server.in_memory
+    assert server.warm_pings == {}  # not a keep-warm ping (messages non-empty)
+
+
+def test_v1_chat_demand_loads_model(make_ollama: Any) -> None:
+    """The /v1 path also loads the model (keep_alive on /v1 stays [UNVERIFIED]
+    and ignored — §6.2; the load itself mirrors real behaviour)."""
+    server = make_ollama()
+    target = "llama-fake:8b"
+    assert target not in server.in_memory
+    resp = httpx.post(
+        f"{base_url(server)}/v1/chat/completions",
+        json={"model": target, "messages": [{"role": "user", "content": "Hi"}], "stream": False},
+    )
+    assert resp.status_code == 200
+    assert target in server.in_memory
+
+
+def test_ps_state_is_per_server_instance() -> None:
+    """Two fakes do not share in-memory state (DEFAULT_IN_MEMORY is a copy)."""
+    a = FakeOllama(("127.0.0.1", 0))
+    b = FakeOllama(("127.0.0.1", 0))
+    a.in_memory.add("x-fake:1b")
+    assert "x-fake:1b" not in b.in_memory
+    a.server_close()
+    b.server_close()

@@ -146,6 +146,40 @@
         }
       }
     },
+    "/mesh/v1/models/load": {
+      "post": {
+        "summary": "Load Model",
+        "description": "API-MODEL-02 (\u00a713.2, FR-MOD-04): 202 `{\"state\":\"loading\"}`.",
+        "operationId": "load_model_mesh_v1_models_load_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/models/unload": {
+      "post": {
+        "summary": "Unload Model",
+        "description": "API-MODEL-03 (\u00a713.2, FR-MOD-04): 202 `{\"state\":\"unloaded\"}` (see\nmodule docstring / QUESTION-106 for the response-state note).",
+        "operationId": "unload_model_mesh_v1_models_unload_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/mesh/v1/health": {
       "get": {
         "summary": "Health",
