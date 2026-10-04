@@ -154,6 +154,12 @@ def compute_transcript(
     The Appendix C vectors show M and N entering TT in the UNCOMPRESSED
     (0x04-prefixed, 65-byte) encoding — the compressed form is only used in
     Appendix B for seed publication."""
+    # Fail-closed guard: _M_POINT/_N_POINT are set at import (below); the
+    # `| None` annotation exists only for the pre-init window. mypy --strict
+    # requires the narrowing, and a None here must never become a TypeError
+    # deep in the transcript math.
+    if _M_POINT is None or _N_POINT is None:  # pragma: no cover — import-time init
+        raise RuntimeError("SPAKE2+ M/N constants failed to initialize")
     m_uncompressed = _uncompress_encode(_M_POINT)
     n_uncompressed = _uncompress_encode(_N_POINT)
     return (

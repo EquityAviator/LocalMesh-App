@@ -105,8 +105,7 @@ class FakeLMStudioHandler(FakeHandler):
                 for m in DEFAULT_MODELS
             ]
         return [
-            {"id": m["id"], "object": "model", "owned_by": m["owned_by"]}
-            for m in DEFAULT_MODELS
+            {"id": m["id"], "object": "model", "owned_by": m["owned_by"]} for m in DEFAULT_MODELS
         ]
 
     # -- routes ------------------------------------------------------------
@@ -251,14 +250,8 @@ def main() -> int:
         fixtures_dir=fixtures,
         cold_load_ms=args.cold_load_ms,
     )
-    mode = (
-        f"token-auth ({'set' if token else 'MISSING'})"
-        if args.auth == "token"
-        else "no-auth"
-    )
-    print(
-        f"fake LM Studio on http://{args.host}:{args.port} [{mode}] shape={UNVERIFIED}"
-    )
+    mode = f"token-auth ({'set' if token else 'MISSING'})" if args.auth == "token" else "no-auth"
+    print(f"fake LM Studio on http://{args.host}:{args.port} [{mode}] shape={UNVERIFIED}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -1,6 +1,9 @@
 [project]
 name = "localmesh-agent"
-version = "0.1.0"
+# 1.0.0rc1 (PEP 440) == SemVer "1.0.0-rc.1" — the AGENT_VERSION surfaced by
+# GET /mesh/v1/info (NFR-COMP-02). tests/unit/test_release_engineering.py
+# pins the two spellings in sync. Release candidate per M9 (§22.1).
+version = "1.0.0rc1"
 description = "LocalMesh AI Desktop Agent — Mesh API service exposing local inference Backends (LM-ARCH-001)"
 requires-python = ">=3.12"
 # NOTE: no `license` field yet — project license is an open owner decision (Q-08).

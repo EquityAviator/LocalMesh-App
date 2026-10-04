@@ -77,9 +77,7 @@ class FakeOllamaHandler(FakeHandler):
         # adapter tests can observe a keep_warm() call flipping list state.
         in_memory = sorted(self.server.in_memory)
         if variant == "c":
-            return [
-                {"name": m, "model": m, "vram_bytes": 5000000000} for m in in_memory
-            ]
+            return [{"name": m, "model": m, "vram_bytes": 5000000000} for m in in_memory]
         return [
             {
                 "name": m,
@@ -121,9 +119,7 @@ class FakeOllamaHandler(FakeHandler):
             self.send_json(
                 self.fixture_response(
                     "api-tags.json",
-                    lambda: marked(
-                        {"models": self.tags_models(scenario.shape_variant)}
-                    ),
+                    lambda: marked({"models": self.tags_models(scenario.shape_variant)}),
                 )
             )
             return
@@ -190,9 +186,7 @@ class FakeOllamaHandler(FakeHandler):
                 self.send_tool_call_turn(model, str(tool_name), arg_blob or "{}")
                 return
         if body.get("stream"):
-            self.stream_chat(
-                model, pieces=["Hello", " from", " fake", " Ollama", "."], gap_ms=10
-            )
+            self.stream_chat(model, pieces=["Hello", " from", " fake", " Ollama", "."], gap_ms=10)
             return
         self.send_json(self.non_stream_completion(model, "Hello from fake Ollama."))
 
@@ -297,12 +291,8 @@ class FakeOllama(FakeBackendServer):
     model for test assertions only (test-tool surface, no contract).
     """
 
-    def __init__(
-        self, address: tuple[str, int], fixtures_dir: Path | None = None
-    ) -> None:
-        super().__init__(
-            address, FakeOllamaHandler, auth_token=None, fixtures_dir=fixtures_dir
-        )
+    def __init__(self, address: tuple[str, int], fixtures_dir: Path | None = None) -> None:
+        super().__init__(address, FakeOllamaHandler, auth_token=None, fixtures_dir=fixtures_dir)
         self.in_memory: set[str] = set(DEFAULT_IN_MEMORY)
         self.warm_pings: dict[str, int] = {}
 
@@ -322,9 +312,7 @@ def main() -> int:
 
     fixtures = Path(args.fixtures_dir) if args.fixtures_dir else None
     server = FakeOllama((args.host, args.port), fixtures_dir=fixtures)
-    print(
-        f"fake Ollama on http://{args.host}:{args.port} [no-auth per §6.2] shape={UNVERIFIED}"
-    )
+    print(f"fake Ollama on http://{args.host}:{args.port} [no-auth per §6.2] shape={UNVERIFIED}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

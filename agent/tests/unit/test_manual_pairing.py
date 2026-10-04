@@ -10,7 +10,6 @@ from localmesh_agent.security.manual_pairing import (
 )
 from localmesh_agent.security.spake2 import (
     Prover,
-    confirm_p_tag,
     derive_w0_w1,
 )
 
@@ -46,8 +45,9 @@ def test_five_failed_attempts_lock_then_cooldown_expires() -> None:
     now = 1000
     for attempt in range(MAX_FAILED_ATTEMPTS):
         now += 1
+        prover = make_prover_for("000000" if session.code != "000000" else "111111", session.salt)
         ok, _schedule = service.verify_attempt(
-            make_prover_for("000000" if session.code != "000000" else "111111", session.salt).start(),
+            prover.start(),
             b"bad-tag",
             now=now,
         )

@@ -302,7 +302,7 @@ def create_admin_app(
             # 43 chars = base64url(SHA-256) unpadded (§17.3 encoding rule)
             raise MeshError(
                 "INVALID_REQUEST",
-                "Body must be {\"spki_pin\": <43-char base64url SHA-256 pin>}.",
+                'Body must be {"spki_pin": <43-char base64url SHA-256 pin>}.',
             )
         backup_pin_fn(pin)
         return {"staged": True, "note": "Presented as pin_backup by /auth/token."}

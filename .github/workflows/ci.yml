@@ -111,20 +111,36 @@ jobs:
           fi
 
   release-gate:
-    # §21.4 "on tags: release build + release-gate scan (SEC-N6) + checksums".
-    # Real release gates, signed artifacts and checksums are delivered at M9
-    # (§22.1 M9); until then this job only re-runs the repo-level security gates.
+    # M9 (§22.1, §21.4): "on tags: release build + release-gate scan (SEC-N6) +
+    # checksums". Full automated §21.4 gate chain + pentest sign-off requirement
+    # (docs/security/pentest-signoff.md, committed before tagging) + wheel/sdist
+    # build + SHA256SUMS + TC-SEC-07 artifact scan. SIGNING stays manual
+    # (docs/RELEASE.md): the release key lives OUTSIDE the repository by design.
     if: startsWith(github.ref, 'refs/tags/')
-    name: release-gate (scaffold until M9)
+    name: release-gate (M9)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Release-gate scans (SEC-N6) — scaffold, full gates at M9
+      - name: Install agent dependencies
+        working-directory: agent
+        run: pip install -r requirements.txt
+      - name: Full release gate (§21.4 order + SEC-N6 + pentest sign-off)
+        run: bash scripts/release_gate.sh --release
+      - name: Build release artifacts (wheel + sdist + SHA256SUMS + artifact scan)
+        run: bash scripts/release_build.sh
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: localmesh-agent-dist
+          path: |
+            agent/dist/*.whl
+            agent/dist/*.tar.gz
+            agent/dist/SHA256SUMS
+          if-no-files-found: error
+      - name: Signing (manual step notice)
         run: |
-          echo "::notice::Release build/gates/checksums are delivered at M9 (§22.1 M9)."
-          python scripts/security/scan_cleartext_manifest.py
-          python scripts/security/scan_content_columns.py
-          python scripts/security/scan_secrets.py
+          echo "::notice::Artifacts + SHA256SUMS built and scanned. Tag the signature step:"
+          echo "::notice::minisign -Sm agent/dist/SHA256SUMS  (key outside the repo, docs/RELEASE.md)."

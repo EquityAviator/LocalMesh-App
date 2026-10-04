@@ -3,9 +3,24 @@
 ## Versioning
 
 - Agent: `agent/src/localmesh_agent/app.py` `AGENT_VERSION` (SemVer,
-  NFR-COMP-02), surfaced via `GET /info.api.agent_version`.
+  NFR-COMP-02), surfaced via `GET /info.api.agent_version`. The PEP 440
+  spelling in `agent/pyproject.toml` must describe the SAME release
+  (`1.0.0-rc.1` ↔ `1.0.0rc1` — pinned by `tests/unit/test_release_engineering.py`).
 - Mesh API: `/mesh/v1` is stable within a major (§13.10); breaking changes
   require `/mesh/v2` alongside + `info.api.versions` listing both.
+
+## One-command gate runner (M9)
+
+```bash
+bash scripts/release_gate.sh             # automated gates only (dev runs)
+bash scripts/release_gate.sh --release   # + requires the pentest sign-off file
+bash scripts/release_build.sh            # wheel + sdist + SHA256SUMS + artifact scan
+```
+
+`--release` fails without `docs/security/pentest-signoff.md` (template
+committed; the operator fills it from the manual section of
+`docs/security/pentest-checklist.md` BEFORE tagging). The tag CI job runs
+exactly these two scripts (`.github/workflows/ci.yml` `release-gate`).
 
 ## Release gates (ALL must be green before signing/tagging)
 
@@ -50,5 +65,26 @@ keyring); TC-SEC-07 scans the manifest for accidentally committed keys.
 
 - Verify the admin `GET /admin/doctor` ordered checks (§18.4) on the target
   host; keep `docs/CHANGELOG.md` current for every release.
-- Go/Rust single-binary rewrite remains an OPTIONAL later decision (ADR-002,
-  §23) — revisit only with measured need (distribution size / startup time).
+- Go/Rust single-binary rewrite: decision gate CLOSED at M9 — Python kept for
+  v1.0 (ADR-021); re-open only via ADR-021's measured-need criteria.
+
+## M9 decision register (owner calls surfaced at M9 — still OPEN)
+
+These are owner decisions per the LM-ARCH-001 open-questions table (§ "Q-08",
+"Q-09": "decided at M9"). M9 ships the decision BRIEF and the ready-to-flip
+state; the final call is recorded here by the owner.
+
+- **Q-08 Project license (permissive vs copyleft).** Facts from the WP-02
+  report (evidence-cited): the only non-permissive Agent dependency is
+  `zeroconf` (LGPL-2.1-or-later, CON-03); everything else is permissive.
+  Recommendation (needs owner legal review, not a decision by the dev agent):
+  a permissive project license (Apache-2.0 suggested for the patent grant)
+  with mandatory redistribution of the zeroconf license text and notices; a
+  copyleft choice would be simpler to reason about but reduces embedding
+  freedom the spec's CON-03 note implies. `agent/pyproject.toml` intentionally
+  still has NO `license` field; adding it is a one-line change once decided.
+- **Q-09 Distribution channel.** Spec default: sideload/F-Droid. Suggestion:
+  keep sideload for v1.0 (zero fee, matches the spec default); Play Store
+  ($25 one-time, owner cost) stays open as a later add-on and does not block
+  rc.1. Android-side WP-09/10/12/13 remain gated on the owner's Android
+  environment regardless of channel.

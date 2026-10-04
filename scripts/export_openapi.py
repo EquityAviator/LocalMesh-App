@@ -55,8 +55,9 @@ def reexec_with_agent_venv() -> None:
     os.execve(str(venv_python), [str(venv_python), str(script)], env)
 
 
-from fastapi import FastAPI
-from localmesh_agent.api.v1 import (
+from fastapi import FastAPI  # noqa: E402 — must follow the venv re-exec above
+
+from localmesh_agent.api.v1 import (  # noqa: E402 — must follow the venv re-exec above
     auth,
     chat,
     device,

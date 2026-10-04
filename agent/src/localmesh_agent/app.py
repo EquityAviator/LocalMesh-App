@@ -72,7 +72,7 @@ from localmesh_agent.store.sqlite import Store
 
 log = get_logger("app")
 
-AGENT_VERSION = "0.1.0"  # NFR-COMP-02 semantic version (surfaced via /info)
+AGENT_VERSION = "1.0.0-rc.1"  # NFR-COMP-02 SemVer (surfaced via /info); PEP 440: 1.0.0rc1 (M9)
 
 
 def build_adapters(settings: Settings) -> list[InferenceBackend]:

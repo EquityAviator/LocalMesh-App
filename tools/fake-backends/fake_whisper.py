@@ -127,9 +127,7 @@ class FakeWhisperHandler(FakeHandler):
         model = parsed["fields"].get("model", DEFAULT_MODEL)
         language = parsed["fields"].get("language")
         if not audio:
-            self.send_json(
-                marked({"error": {"message": "missing file field"}}), status=400
-            )
+            self.send_json(marked({"error": {"message": "missing file field"}}), status=400)
             return
         # Deterministic scaffold transcript: asserts the bytes arrived intact
         # without claiming real Whisper behaviour (UNVERIFIED_SHAPE).
@@ -137,9 +135,7 @@ class FakeWhisperHandler(FakeHandler):
         if language:
             transcript += f" [{language}]"
         self.send_json(
-            self.fixture_response(
-                "transcriptions.json", lambda: marked({"text": transcript})
-            )
+            self.fixture_response("transcriptions.json", lambda: marked({"text": transcript}))
         )
 
 
@@ -177,9 +173,7 @@ def main() -> int:
     args = parser.parse_args()
 
     fixtures = Path(args.fixtures_dir) if args.fixtures_dir else None
-    server = FakeWhisper(
-        (args.host, args.port), auth_token=args.token, fixtures_dir=fixtures
-    )
+    server = FakeWhisper((args.host, args.port), auth_token=args.token, fixtures_dir=fixtures)
     print(f"fake Whisper on http://{args.host}:{args.port} shape={UNVERIFIED}")
     try:
         server.serve_forever()

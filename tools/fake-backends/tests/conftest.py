@@ -16,9 +16,9 @@ import pytest
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS_DIR))
 
-from fake_lmstudio import FakeLMStudio
-from fake_ollama import FakeOllama
-from fake_whisper import FakeWhisper
+from fake_lmstudio import FakeLMStudio  # noqa: E402 — follows sys.path setup
+from fake_ollama import FakeOllama  # noqa: E402 — follows sys.path setup
+from fake_whisper import FakeWhisper  # noqa: E402 — follows sys.path setup
 
 
 @pytest.fixture()

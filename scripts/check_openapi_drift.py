@@ -63,9 +63,7 @@ def main() -> int:
             print(f"  {d}")
         if len(diffs) > 20:
             print(f"  ... and {len(diffs) - 20} more")
-        print(
-            "Fix: run `python scripts/export_openapi.py` and commit the regenerated file."
-        )
+        print("Fix: run `python scripts/export_openapi.py` and commit the regenerated file.")
         return 1
     print("OpenAPI drift check: OK (committed spec matches generated output)")
     return 0

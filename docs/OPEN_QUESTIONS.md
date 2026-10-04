@@ -212,3 +212,19 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
   both statements textually). Not blocking M0 exit; revisit before WP-05.
 - Status: OPEN
 
+
+## QUESTION-108 — Q-08/Q-09 owner decisions surfaced by the M9 release gate
+- Date: 2026-10-04
+- Raised by: M9 (§22.1 M9: "Pen-test checklist … signed releases"; open-questions
+  table marks Q-08 license and Q-09 distribution "decided at M9").
+- Question: which project license (permissive vs copyleft, given the zeroconf
+  LGPL-2.1-or-later dependency, CON-03) and which Android distribution channel?
+- Context/evidence: decision brief with the evidence-cited facts and a
+  recommendation recorded in `docs/RELEASE.md` § "M9 decision register";
+  `agent/pyproject.toml` deliberately ships WITHOUT a `license` field until the
+  owner decides. Go/Rust decision gate closed separately (ADR-021, Accepted).
+- Why we must not guess: a license choice is an owner legal act; the dev agent
+  can only prepare the decision, not take it.
+- Default if unanswered: release candidate remains licensable as
+  "all-rights-reserved until Q-08 lands"; tagging 1.0.0 final REQUIRES Q-08.
+- Status: OPEN (owner)

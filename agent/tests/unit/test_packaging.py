@@ -9,7 +9,6 @@ path (§17.6). Real verification is an owner action on Windows/a systemd host.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]  # monorepo root
@@ -36,7 +35,9 @@ def test_windows_installer_does_not_disable_tls_or_auth() -> None:
     script = PACKAGING / "windows" / "install-agent.ps1"
     text = script.read_text(encoding="utf-8")
     # No EXECUTED line may enable dev mode; comments mentioning it are fine.
-    executed = [line for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+    executed = [
+        line for line in text.splitlines() if line.strip() and not line.strip().startswith("#")
+    ]
     assert not any("dev-insecure" in line.lower() for line in executed), (
         "release install must never invoke dev-insecure mode (§17.9)"
     )

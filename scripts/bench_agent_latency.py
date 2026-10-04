@@ -47,10 +47,11 @@ for _p in ("tools/fake-backends", "agent/src"):
     if _abs.is_dir() and str(_abs) not in sys.path:
         sys.path.insert(0, str(_abs))
 
-import httpx
-from fake_ollama import DEFAULT_MODEL, FakeOllama
-from localmesh_agent.app import create_app
-from localmesh_agent.config import Settings
+import httpx  # noqa: E402 — follows sys.path setup
+from fake_ollama import DEFAULT_MODEL, FakeOllama  # noqa: E402 — follows sys.path setup
+
+from localmesh_agent.app import create_app  # noqa: E402 — follows sys.path setup
+from localmesh_agent.config import Settings  # noqa: E402 — follows sys.path setup
 
 MESH_MODEL_ID = f"ollama::{DEFAULT_MODEL}"
 
@@ -118,13 +119,9 @@ async def run(iterations: int, warmup: int) -> dict[str, Any]:
             settings = Settings(
                 agent={"data_dir": data_dir},
                 mdns={"enabled": False},
-                backends=[
-                    {"id": "ollama", "kind": "ollama", "base_url": _fake_url(server)}
-                ],
+                backends=[{"id": "ollama", "kind": "ollama", "base_url": _fake_url(server)}],
             )
-            app = create_app(
-                settings, dev_insecure=True
-            )  # QUESTION-105 dev token bypass
+            app = create_app(settings, dev_insecure=True)  # QUESTION-105 dev token bypass
             async with app.router.lifespan_context(app):  # type: ignore[attr-defined]
                 transport = httpx.ASGITransport(app=app)
                 async with httpx.AsyncClient(
@@ -187,7 +184,8 @@ def render(results: dict[str, Any]) -> str:
         "",
         "§19.1 budgets (for reference — these samples are NOT Agent-added):",
         f"  {TARGETS['ttft_p95_ms']['label']:<50} ≤ {TARGETS['ttft_p95_ms']['budget']} ms",
-        f"  {TARGETS['chunk_gap_p95_ms']['label']:<50} ≤ {TARGETS['chunk_gap_p95_ms']['budget']} ms",
+        f"  {TARGETS['chunk_gap_p95_ms']['label']:<50}"
+        f" ≤ {TARGETS['chunk_gap_p95_ms']['budget']} ms",
         "",
         "note: the in-process ASGI transport coalesces stream chunks — per-chunk",
         "      gaps read ≈0 here; the per-chunk budget needs a TCP listener and",

@@ -58,3 +58,61 @@ def test_tc_sec_07_release_bundle_file_manifest_is_scannable() -> None:
         assert component_dir.is_dir(), f"release component missing: {component}"
     for py in (REPO_ROOT / "agent" / "src").rglob("*.py"):
         py_compile.compile(str(py), doraise=True)
+
+
+def test_tc_sec_07_artifact_scan_detects_key_in_archive(tmp_path: Path) -> None:
+    """M9 (§21.6): the artifact scanner must catch a secret that exists only
+    inside a BUILT artifact (not in the tracked tree) — otherwise the signed
+    bytes are never scanned (scripts/release_build.sh)."""
+    import zipfile
+
+    scanner = REPO_ROOT / "scripts" / "security" / "scan_artifacts.py"
+    wheel = tmp_path / "localmesh_agent-1.0.0rc1-py3-none-any.whl"
+    # Synthetic fixture assembled from fragments: the scanner pattern
+    # ("-----BEGIN [A-Z ]*PRIVATE KEY-----") must match the PAYLOAD, while the
+    # test source itself must never contain a key-shaped literal (the TC-SEC-07
+    # manifest scan scans this very file too).
+    begin = "-----BEGIN " + "RSA PRIVATE" + " KEY-----"
+    end = "-----END RSA PRIVATE KEY-----"
+    with zipfile.ZipFile(wheel, "w") as zf:
+        zf.writestr("localmesh_agent/leak.py", f"key = '{begin}\\nabc\\n{end}'\n")
+    result = subprocess.run(  # noqa: S603 — fixed args, repo-internal
+        [sys.executable, str(scanner), str(wheel)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        timeout=120,
+    )
+    assert result.returncode == 1, f"scanner missed an in-archive key:\n{result.stdout}"
+    assert "pem-private-key" in result.stdout
+
+
+def test_tc_sec_07_artifact_scan_passes_clean_archive(tmp_path: Path) -> None:
+    """A clean wheel-shaped archive passes; an explicit target that scans
+    nothing FAILS (release_build.sh must never sign an empty bundle)."""
+    import zipfile
+
+    scanner = REPO_ROOT / "scripts" / "security" / "scan_artifacts.py"
+    wheel = tmp_path / "localmesh_agent-1.0.0rc1-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as zf:
+        zf.writestr("localmesh_agent/__init__.py", "AGENT_VERSION = '1.0.0-rc.1'\n")
+    result = subprocess.run(  # noqa: S603 — fixed args, repo-internal
+        [sys.executable, str(scanner), str(wheel)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        timeout=120,
+    )
+    assert result.returncode == 0, f"clean artifact failed the scan:\n{result.stdout}"
+    assert "Artifact scan: OK" in result.stdout
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = subprocess.run(  # noqa: S603 — fixed args, repo-internal
+        [sys.executable, str(scanner), str(empty)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        timeout=120,
+    )
+    assert result.returncode == 1, "an explicit empty target must fail the gate"

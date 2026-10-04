@@ -20,10 +20,11 @@ Design [DESIGN where the spec is silent]:
 
 from __future__ import annotations
 
+import hmac
 import secrets
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from localmesh_agent.security.spake2 import (
     KeySchedule,
@@ -44,7 +45,7 @@ ID_PROVER = b"localmesh-phone"
 ID_VERIFIER = b"localmesh-agent"
 
 
-class ManualPairingState(str, Enum):
+class ManualPairingState(StrEnum):
     OPEN = "open"
     LOCKED = "locked"
     EXPIRED = "expired"
@@ -128,16 +129,12 @@ class ManualPairingService:
         try:
             verifier = self.build_verifier(session)
             _y, share_v = verifier.start()
-            schedule, _confirm_v, expected_confirm_p = verifier.finish(
-                prover_share.share_p
-            )
+            schedule, _confirm_v, expected_confirm_p = verifier.finish(prover_share.share_p)
             # RFC 9383 §3.4: the Agent verifies the Prover's tag; the Prover
-            # verifies ours with the same key material (constant-time compare
-            # happens at the caller boundary via hmac.compare_digest inside
-            # spake2._mac consumers — here the tags are compared in full).
-            ok = hmac.compare_digest(
-                spake_confirm_p_tag(schedule.k_confirm_p, share_v), confirm_p
-            )
+            # verifies ours with the same key material. Constant-time compare
+            # here (leaking tag-prefix equality would let an attacker confirm
+            # guesses offline) — hmac imported at module top.
+            ok = hmac.compare_digest(spake_confirm_p_tag(schedule.k_confirm_p, share_v), confirm_p)
             _ = expected_confirm_p
         except ValueError:
             ok = False

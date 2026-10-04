@@ -98,9 +98,7 @@ def marker(shape: str = UNVERIFIED, note: str | None = None) -> dict[str, Any]:
     }
 
 
-def marked(
-    obj: dict[str, Any], shape: str = UNVERIFIED, note: str | None = None
-) -> dict[str, Any]:
+def marked(obj: dict[str, Any], shape: str = UNVERIFIED, note: str | None = None) -> dict[str, Any]:
     """Return a copy of `obj` with the shape marker added on top."""
     out = dict(obj)
     out.update(marker(shape, note))
@@ -293,9 +291,7 @@ class FakeHandler(BaseHTTPRequestHandler):
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": model,
-                    "choices": [
-                        {"index": 0, "delta": {"content": piece}, "finish_reason": None}
-                    ],
+                    "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}],
                 }
                 if i == 0:
                     chunk = marked(chunk)

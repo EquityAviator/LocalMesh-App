@@ -76,17 +76,11 @@ def test_openai_model_list(make_lmstudio: Any) -> None:
 def test_model_list_shape_variants(make_lmstudio: Any) -> None:
     server = make_lmstudio(cold_load_ms=0)
     url = f"{base_url(server)}/api/v1/models"
-    variant_b = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-b"}).json()[
-        "data"
-    ]
+    variant_b = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-b"}).json()["data"]
     assert "context_length" in variant_b[0]
-    variant_c = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-c"}).json()[
-        "data"
-    ]
+    variant_c = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-c"}).json()["data"]
     assert "max_context_len" in variant_c[0] and "extra_unknown_field" in variant_c[0]
-    variant_a = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-a"}).json()[
-        "data"
-    ]
+    variant_a = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-a"}).json()["data"]
     assert list(variant_a[0].keys()) == ["id"]
 
 

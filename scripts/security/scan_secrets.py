@@ -31,9 +31,7 @@ SKIP_PARTS = {
     ".ruff_cache",
 }
 SKIP_PREFIXES = (
-    REPO_ROOT
-    / "scripts"
-    / "security",  # gate definitions contain the patterns themselves
+    REPO_ROOT / "scripts" / "security",  # gate definitions contain the patterns themselves
     REPO_ROOT / "docs" / "openapi",  # generated artifact
 )
 
@@ -61,8 +59,7 @@ def main() -> int:
             continue
         rel = path.relative_to(REPO_ROOT)
         if any(
-            str(rel).startswith(str(p.relative_to(REPO_ROOT))) or path == p
-            for p in SKIP_PREFIXES
+            str(rel).startswith(str(p.relative_to(REPO_ROOT))) or path == p for p in SKIP_PREFIXES
         ):
             continue
         try:
@@ -81,9 +78,7 @@ def main() -> int:
         print("FAIL: potential committed secrets:")
         for v in violations:
             print(f"  - {v}")
-        print(
-            "False positive? Add a comment: # secrets-scan: allow(<pattern-id>) <reason>"
-        )
+        print("False positive? Add a comment: # secrets-scan: allow(<pattern-id>) <reason>")
         return 1
     print(f"Secret scan: OK ({scanned} file(s) scanned)")
     return 0
