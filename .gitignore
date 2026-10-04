@@ -52,3 +52,21 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# --- LocalMesh AI (WP-01, §21.1) -------------------------------------------
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# Local data — never commit Agent or App databases (ADR-011: no Content on Agent)
+*.db
+*.sqlite
+*.sqlite3
