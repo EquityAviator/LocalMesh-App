@@ -6,7 +6,17 @@
 #   - a missing directory  -> transparent skip with a notice
 #   - pytest rc=5 ("no tests collected") -> transparent skip with a notice
 #   - any other failure    -> fails the pipeline
+#
+# Interpreter resolution: prefer agent/.venv when present so that a repo-root
+# invocation (the CI style) cannot accidentally resolve a PATH pytest that
+# lacks the Agent's pinned deps (sandbox global venvs shadow PATH). In CI the
+# venv does not exist and PATH pytest is used exactly as before.
 set -u
+
+PYTEST=pytest
+if [ -x "agent/.venv/bin/pytest" ]; then
+  PYTEST="agent/.venv/bin/pytest"
+fi
 
 rc=0
 found_any=0
@@ -18,7 +28,7 @@ for d in "$@"; do
   fi
   found_any=1
   rc=0
-  pytest "$d" -v || rc=$?
+  "$PYTEST" "$d" -v || rc=$?
   if [ "$rc" -eq 0 ]; then
     collected_any=1
   elif [ "$rc" -eq 5 ]; then

@@ -132,3 +132,10 @@ captured, adapter contract tests cannot run against recorded real responses
 1. **ADR-017 (Proposed)** — `setuptools` as Agent build backend (`docs/adr/017-python-build-backend.md`). CI's transitional pre-lockfile path and future pipx packaging (§21.6) depend on a build backend; approval requested.
 2. **zeroconf LGPL-2.1-or-later** — awareness under CON-03/Q-08; no change proposed.
 3. None of the above blocks WP-03 or the M0 exit criteria.
+
+> **Post-capture status (M5, WP-15):** the pre-registered `pynvml` vs
+> `nvidia-ml-py` decision rule above was triggered — `pynvml` 13.0.1 emits an
+> upstream deprecation `FutureWarning` naming `nvidia-ml-py` as successor.
+> Switched to `nvidia-ml-py==13.615.71` (the version captured in this spike's
+> evidence) under **ADR-018** (`docs/adr/018-nvidia-ml-py.md`); the `pynvml`
+> module name is unchanged, so no runtime or test code moved.

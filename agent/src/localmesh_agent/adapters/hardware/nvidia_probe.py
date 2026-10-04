@@ -1,12 +1,14 @@
-"""NVIDIA GPU probe via optional pynvml — WP-15 (§10.1 "optional pynvml").
+"""NVIDIA GPU probe via the optional NVML binding — WP-15 (§10.1 "optional pynvml").
 
 Implements the `GpuLister` seam consumed by
 `psutil_probe.CompositeHardwareProbe`. Design rules:
 
-- **Optional dependency** (§21.2): pynvml may be absent (no NVIDIA driver,
-  CPU-only host). An import failure or NVML init failure yields an EMPTY
-  tuple — never an error, never a fabricated GPU entry (§13.2 API-DEV-01
-  "MUST NOT fill unknowns with defaults"; FR-STAT-01 "works with no GPU").
+- **Optional dependency** (§21.2, distribution per ADR-018): the `nvidia` extra
+  installs `nvidia-ml-py`, which ships the `pynvml` module. It may be absent
+  (no NVIDIA driver, CPU-only host). An import failure or NVML init failure
+  yields an EMPTY tuple — never an error, never a fabricated GPU entry
+  (§13.2 API-DEV-01 "MUST NOT fill unknowns with defaults"; FR-STAT-01
+  "works with no GPU").
 - **Per-field degradation**: NVML reports per-attribute `NVMLError`
   subclasses (e.g. `NVMLError_NotSupported` on some consumer cards); a
   failing attribute leaves that one field `None` while the rest survive.

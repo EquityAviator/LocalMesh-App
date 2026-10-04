@@ -11,3 +11,4 @@ One file per ADR change, named `NNN-kebab-case-title.md`, using the template in
 | ADR | Title | Status |
 |---|---|---|
 | 017 | Python build backend: setuptools | Proposed |
+| 018 | NVIDIA NVML binding distribution: `nvidia-ml-py` (not `pynvml`) | Proposed |

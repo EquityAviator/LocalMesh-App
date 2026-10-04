@@ -21,7 +21,13 @@ dependencies = [
 
 [project.optional-dependencies]
 nvidia = [
-    "pynvml",               # optional per §21.2; final distribution name decided by the WP-02 spike
+    # §21.2 names "pynvml" and defers the distribution name to the WP-02 spike
+    # (AGENTS.md: "Never type versions from memory" — pin lives in
+    # requirements.txt). pynvml 13.x is deprecated upstream in favour of
+    # NVIDIA's nvidia-ml-py, which ships the same `pynvml` module; the swap was
+    # triggered at M5 by the deprecation FutureWarning, per the WP-02 report's
+    # pre-registered decision rule. See docs/adr/018-nvidia-ml-py.md.
+    "nvidia-ml-py",
 ]
 dev = [
     "ruff",                 # §21.2 agent tooling
