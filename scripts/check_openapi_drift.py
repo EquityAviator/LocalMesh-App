@@ -5,6 +5,10 @@ Regenerates the OpenAPI document from code and compares it with the committed
 
 Usage:
     python scripts/check_openapi_drift.py
+
+The script re-execs under the lockfile interpreter (agent/.venv) when
+present — see export_openapi.reexec_with_agent_venv (round-9 QA fix; CI,
+which installs the lockfile into its own venv, is unaffected).
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from export_openapi import REPO_ROOT, build_openapi  # noqa: E402
+from export_openapi import REPO_ROOT, build_openapi, reexec_with_agent_venv  # noqa: E402
 
 COMMITTED = REPO_ROOT / "docs" / "openapi" / "mesh-v1.json"
 
@@ -39,6 +43,7 @@ def diff_paths(a: Any, b: Any, prefix: str = "") -> list[str]:
 
 
 def main() -> int:
+    reexec_with_agent_venv()
     if not COMMITTED.exists():
         print(
             f"FAIL: {COMMITTED.relative_to(REPO_ROOT)} is missing. "

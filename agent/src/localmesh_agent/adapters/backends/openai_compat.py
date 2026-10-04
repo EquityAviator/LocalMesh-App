@@ -237,6 +237,7 @@ class OpenAICompatBackend:
         auth_token: str | None = None,
         first_token_timeout_s: float = DEFAULT_FIRST_TOKEN_TIMEOUT_S,
         total_stream_cap_s: float = DEFAULT_TOTAL_STREAM_CAP_S,
+        idle_chunk_timeout_s: float = IDLE_CHUNK_TIMEOUT_S,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.id = backend_id  # §10.2: stable id, e.g. "openai:<name>"
@@ -245,6 +246,7 @@ class OpenAICompatBackend:
         self._auth_token = auth_token
         self._first_token_timeout_s = first_token_timeout_s
         self._total_stream_cap_s = total_stream_cap_s
+        self._idle_chunk_timeout_s = idle_chunk_timeout_s
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(
                 CONNECT_TIMEOUT_S, read=first_token_timeout_s, write=30.0, pool=30.0
@@ -386,12 +388,16 @@ class OpenAICompatBackend:
     async def _consume(
         self, response: httpx.Response, cancel: CancelToken
     ) -> AsyncIterator[ChatChunk]:
-        """SSE body -> ChatChunks; idle 60 s, total cap, [DONE] terminator,
-        cancel honoured even mid-read (§13.7: abort upstream ≤ 1 s)."""
+        """SSE body -> ChatChunks; §10.3 rule 4 budgets — first-token gap uses
+        `first_token_timeout_s` (120 s default: a cold model load is silence,
+        not death), gaps after the first parsed chunk use the 60 s idle
+        budget; plus total cap, [DONE] terminator, cancel honoured even
+        mid-read (§13.7: abort upstream ≤ 1 s)."""
         parser = SSEParser()
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._total_stream_cap_s
         saw_done = False
+        got_first_chunk = False
         raw = response.aiter_bytes()
         while not saw_done:
             if loop.time() > deadline:
@@ -400,9 +406,16 @@ class OpenAICompatBackend:
             # a slow read aborts immediately (§13.7 ≤ 1 s, NFR-PERF-03 path).
             chunk_task: asyncio.Task[bytes] = asyncio.ensure_future(raw.__anext__())
             token_task = asyncio.ensure_future(cancel.wait())
+            # §10.3 rule 4: two DIFFERENT silence budgets — before the first
+            # parsed chunk the Backend may legitimately be loading the model
+            # (cold load, up to `first_token_timeout_s`); afterwards a 60 s
+            # gap means the stream is dead.
+            gap_budget = (
+                self._first_token_timeout_s if not got_first_chunk else self._idle_chunk_timeout_s
+            )
             done, _ = await asyncio.wait(
                 {chunk_task, token_task},
-                timeout=IDLE_CHUNK_TIMEOUT_S,
+                timeout=gap_budget,
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if chunk_task not in done:
@@ -410,7 +423,7 @@ class OpenAICompatBackend:
                 token_task.cancel()
                 if token_task in done:
                     raise MeshError("CANCELLED", "Cancelled before completion.")
-                raise MeshError("BACKEND_TIMEOUT", "Idle gap between chunks exceeded.")
+                raise MeshError("BACKEND_TIMEOUT", "No response from Backend in time.")
             token_task.cancel()
             if token_task in done and chunk_task.cancelled():
                 raise MeshError("CANCELLED", "Cancelled before completion.")
@@ -428,6 +441,7 @@ class OpenAICompatBackend:
                     break
                 parsed = chunk_from_sse_data(event.data, self.id)
                 if parsed is not None:
+                    got_first_chunk = True
                     yield parsed
         if not saw_done:
             # §10.7: malformed/incomplete backend stream is terminal.

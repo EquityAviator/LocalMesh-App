@@ -74,6 +74,12 @@ def build_adapters(settings: Settings) -> list[InferenceBackend]:
     import keyring
 
     adapters: list[InferenceBackend] = []
+    # Appendix E [limits] knobs — §10.3 rule 4 says these ARE configurable:
+    # before this wiring the config keys existed but never reached the
+    # adapters (operators' `first_token_timeout_seconds` / `max_stream_seconds`
+    # were silently ignored).
+    first_token_timeout_s = float(settings.limits.first_token_timeout_seconds)
+    total_stream_cap_s = float(settings.limits.max_stream_seconds)
     for backend in settings.backends:
         if not backend.enabled:
             continue
@@ -81,12 +87,33 @@ def build_adapters(settings: Settings) -> list[InferenceBackend]:
         if backend.auth_ref:
             auth_token = keyring.get_password("localmesh", backend.auth_ref)
         if backend.kind == "lmstudio":
-            adapters.append(LMStudioBackend(backend.id, backend.base_url, auth_token=auth_token))
+            adapters.append(
+                LMStudioBackend(
+                    backend.id,
+                    backend.base_url,
+                    auth_token=auth_token,
+                    first_token_timeout_s=first_token_timeout_s,
+                    total_stream_cap_s=total_stream_cap_s,
+                )
+            )
         elif backend.kind == "ollama":
-            adapters.append(OllamaBackend(backend.id, backend.base_url))
+            adapters.append(
+                OllamaBackend(
+                    backend.id,
+                    backend.base_url,
+                    first_token_timeout_s=first_token_timeout_s,
+                    total_stream_cap_s=total_stream_cap_s,
+                )
+            )
         else:
             adapters.append(
-                OpenAICompatBackend(backend.id, backend.base_url, auth_token=auth_token)
+                OpenAICompatBackend(
+                    backend.id,
+                    backend.base_url,
+                    auth_token=auth_token,
+                    first_token_timeout_s=first_token_timeout_s,
+                    total_stream_cap_s=total_stream_cap_s,
+                )
             )
     return adapters
 

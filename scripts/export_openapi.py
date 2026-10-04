@@ -10,17 +10,50 @@ CI regenerates this file and fails if the committed one differs
 
 Usage:
     python scripts/export_openapi.py            # (re)write docs/openapi/mesh-v1.json
+
+Interpreter note: the generated schema embeds pydantic/FastAPI version
+artifacts; the committed spec must come from the LOCKFILE interpreter
+(agent/.venv). Both OpenAPI scripts re-exec under `agent/.venv/bin/python`
+when present (CI installs the lockfile into its own venv — unaffected).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "agent" / "src"))
+
+_REEXEC_GUARD = "LOCALMESH_OPENAPI_SCRIPT_REEXEC"
+
+
+def reexec_with_agent_venv() -> None:
+    """Prefer the lockfile interpreter for reproducible schema generation.
+
+    A system python with a different pydantic/fastapi generates a different
+    ValidationError schema — round-9 QA false-failed the drift check that way
+    (same failure class as the pytest_layer.sh interpreter bug, round 7)."""
+    if os.environ.get(_REEXEC_GUARD) == "1":
+        return
+    venv_python = REPO_ROOT / "agent" / ".venv" / "bin" / "python"
+    if not venv_python.is_file():
+        return
+    venv_dir = venv_python.parent.parent.resolve()
+    if Path(sys.prefix).resolve() == venv_dir:
+        return  # already running under the lockfile venv
+    # NOTE: comparing resolved executables does NOT work — a venv python is a
+    # symlink to the very same base interpreter as system python3.
+    env = dict(os.environ, _REEXEC_GUARD="1")
+    # sys.argv[0], NOT __file__: the shim lives in export_openapi.py but is
+    # also imported by check_openapi_drift.py — __file__ would re-exec the
+    # EXPORTER from the checker (round-9 QA caught exactly that).
+    script = Path(sys.argv[0]).resolve()
+    os.execve(str(venv_python), [str(venv_python), str(script)], env)
+
 
 from fastapi import FastAPI  # noqa: E402
 
@@ -64,6 +97,7 @@ def build_openapi() -> dict[str, Any]:
 
 
 def main() -> int:
+    reexec_with_agent_venv()
     out = REPO_ROOT / "docs" / "openapi" / "mesh-v1.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     spec = build_openapi()

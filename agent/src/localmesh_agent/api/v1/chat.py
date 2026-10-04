@@ -5,7 +5,13 @@ SSE wire format (§13.7, normative):
   model_state);
 - unnamed events with OpenAI `chat.completion.chunk` JSON, terminated by the
   literal `data: [DONE]`;
-- keepalive comment `: ping` every 15 s while queued/loading;
+- keepalive comment `: ping` every 15 s while queued/loading — including the
+  cold-load first-token wait (CI-21 mitigation "Pings + UI 'Loading model…'",
+  CI-18: the phone treats ≥ 45 s of silence as a dead stream);
+- the first-token TIME budget itself is the Backend adapter's §10.3 rule 4
+  (`first_token_timeout_seconds`, default 120 s) — it surfaces here as a
+  terminal `mesh.error` `BACKEND_TIMEOUT` (Appendix D 504), never as a raw
+  generator abort (NFR-REL-02);
 - named event `mesh.stats` last (before [DONE]);
 - `mesh.error` is terminal (no [DONE] follows);
 - Cancel (client close or API-REQ-01): abort upstream ≤ 1 s, free the slot,
@@ -84,6 +90,9 @@ async def _stream(
     finish_reason: str | None = None
     job_released = False
     cancelled = False
+    # Pending first-chunk fetch (ping race below); cancelled on any exit so a
+    # closed stream never leaks a task still pulling from the Backend.
+    pending_next: asyncio.Task[ChatChunk] | None = None
 
     def release_job() -> None:
         nonlocal job_released
@@ -180,7 +189,24 @@ async def _stream(
                 break
             try:
                 if first_chunk:
-                    chunk = await asyncio.wait_for(upstream.__anext__(), timeout=30.0)
+                    # §13.7 "Model loading … then pings until first token" /
+                    # CI-21: race the first chunk against 15 s keepalives so a
+                    # cold model load (mesh.meta model_state="loading") never
+                    # looks dead to the phone's 45 s idle detector (CI-18).
+                    # The first-token TIME budget is the adapter's (§10.3 rule
+                    # 4, default 120 s): it raises MeshError("BACKEND_TIMEOUT")
+                    # through the task — caught below as a terminal mesh.error.
+                    # (A former hard `wait_for(…, 30)` here aborted the stream
+                    # with an uncaught TimeoutError — no mesh.error, no pings,
+                    # and 30 s ≠ the spec's 120 s cold-load budget.)
+                    pending_next = asyncio.ensure_future(upstream.__anext__())
+                    while True:
+                        done, _ = await asyncio.wait({pending_next}, timeout=PING_INTERVAL_S)
+                        if pending_next in done:
+                            break
+                        yield ": ping\n\n"
+                    chunk = pending_next.result()
+                    pending_next = None
                     first_chunk = False
                 else:
                     chunk = await upstream.__anext__()
@@ -301,6 +327,8 @@ async def _stream(
             },
         )
     finally:
+        if pending_next is not None and not pending_next.done():
+            pending_next.cancel()  # stop pulling from the Backend on exit
         job.token.cancel()  # abort upstream on any generator exit (§13.7)
         release_job()
 
