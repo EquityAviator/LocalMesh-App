@@ -8,6 +8,7 @@ Clock; no SQLite, no asyncio.
 import pytest
 from tests.unit.fake_store import FakeClock, FakeStore
 
+from localmesh_agent.adapters.ports import TailnetInfo
 from localmesh_agent.security import crypto
 from localmesh_agent.security.devices import DeviceService
 from localmesh_agent.security.pairing import (
@@ -334,3 +335,91 @@ def test_qr_secret_never_reaches_audit_or_store() -> None:
     for event, _device, _meta in store.audit:
         assert secret not in event
     assert store.devices == {}
+
+
+# -- WP-14: Tailscale detection surfaces (§13.2 endpoints.tailnet, §17.4 ep,
+#    §18.6 "reports name/IPs … in pairing `endpoints`") ------------------------
+
+
+def _with_tailnet(service: PairingService, info: TailnetInfo | None) -> PairingService:
+    service.tailnet = info
+    service.listen_port = 8443
+    return service
+
+
+def _approved_status(service: PairingService) -> dict[str, object]:
+    opened = service.open()
+    params = claim_params(service, opened)
+    service.complete(
+        pair_id=params["pair_id"],
+        client_nonce_b64url=params["client_nonce"],
+        device_name="Pixel 8",
+        platform="android",
+        device_public_key_spki_b64url=crypto.b64url_encode(params["spki"]),
+        proof_b64url=params["proof"],
+    )
+    service.approve()
+    status_proof = crypto.b64url_encode(
+        crypto.status_proof(params["secret"], params["pair_id"], bytes(range(16)))
+    )
+    return service.status(
+        pair_id=params["pair_id"],
+        client_nonce_b64url=params["client_nonce"],
+        status_proof_b64url=status_proof,
+    )
+
+
+def test_status_tailnet_block_present_when_running() -> None:
+    service = _with_tailnet(
+        make_service()[0],
+        TailnetInfo(state="Running", dns_name="gaming-pc.tail.ts.net", ips=("100.64.0.1",)),
+    )
+    result = _approved_status(service)
+    endpoints = result["endpoints"]
+    assert isinstance(endpoints, dict)
+    assert endpoints["tailnet"] == {"dns": "gaming-pc.tail.ts.net", "ips": ["100.64.0.1"]}
+
+
+def test_status_tailnet_null_when_absent_or_not_running() -> None:
+    for info in (None, TailnetInfo(state="Stopped", dns_name="x.ts.net", ips=("100.64.0.1",))):
+        service = _with_tailnet(make_service()[0], info)
+        result = _approved_status(service)
+        endpoints = result["endpoints"]
+        assert isinstance(endpoints, dict)
+        assert endpoints["tailnet"] is None
+
+
+def test_status_tailnet_null_when_running_but_nothing_usable() -> None:
+    # A running backend that reported neither a dns name nor a 100.x address
+    # has nothing to connect to — null, never guessed (§13.2 rule).
+    service = _with_tailnet(make_service()[0], TailnetInfo(state="Running"))
+    result = _approved_status(service)
+    endpoints = result["endpoints"]
+    assert isinstance(endpoints, dict)
+    assert endpoints["tailnet"] is None
+
+
+def test_qr_carries_t2_endpoints_after_lan_ones() -> None:
+    service = _with_tailnet(
+        make_service()[0],
+        TailnetInfo(state="Running", dns_name="gaming-pc.tail.ts.net", ips=("100.64.0.1",)),
+    )
+    opened = service.open()
+    eps = [
+        part.removeprefix("ep=")
+        for part in opened.qr.removeprefix("localmesh://pair?").split("&")
+        if part.startswith("ep=")
+    ]
+    from urllib.parse import unquote
+
+    assert [unquote(e) for e in eps] == [
+        EP,  # LAN first — the operator pairs on LAN (§18.5)
+        "https://gaming-pc.tail.ts.net:8443",  # then MagicDNS (§16.1 step 4)
+        "https://100.64.0.1:8443",  # then the 100.x address
+    ]
+
+
+def test_qr_has_no_t2_endpoints_without_tailnet() -> None:
+    service, _store, _clock = make_service()
+    opened = service.open()
+    assert opened.qr.count("ep=") == 1  # only the LAN endpoint

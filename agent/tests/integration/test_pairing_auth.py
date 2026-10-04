@@ -151,6 +151,38 @@ async def test_pair_complete_202_then_status_awaiting(fake_lmstudio: str, tmp_pa
             assert "device_id" not in body  # only when approved (§13.2)
 
 
+async def test_pair_status_reports_tailnet_endpoints_block(
+    fake_lmstudio: str, tmp_path: Path
+) -> None:
+    """WP-14 (§13.2/§18.6): the approved status carries the Agent's Tailnet
+    block so the App can generate T2 candidates (§16.1 step 4)."""
+    from localmesh_agent.adapters.ports import TailnetInfo
+
+    app = create_app(make_settings(fake_lmstudio, tmp_path), dev_insecure=False)
+    async with app.router.lifespan_context(app):  # type: ignore[attr-defined]
+        async with make_client(app) as client:
+            # Startup ran the (absent-binary → None) probe; simulate a real
+            # tailnet detection snapshot the way app._startup would inject it.
+            app.state.tailnet = TailnetInfo(
+                state="Running", dns_name="gaming-pc.tail1234.ts.net", ips=("100.101.102.103",)
+            )
+            app.state.pairing.tailnet = app.state.tailnet
+            opened = app.state.pairing.open()
+            complete = await client.post(
+                "/mesh/v1/pair/complete", json=_claim_body(opened.qr, _device_key())
+            )
+            assert complete.status_code == 202
+            app.state.pairing.approve()
+            status = await client.post("/mesh/v1/pair/status", json=_status_body(opened.qr))
+            assert status.status_code == 200
+            body = status.json()
+            assert body["status"] == "approved"
+            assert body["endpoints"]["tailnet"] == {
+                "dns": "gaming-pc.tail1234.ts.net",
+                "ips": ["100.101.102.103"],
+            }
+
+
 async def test_pair_complete_409_when_closed(fake_lmstudio: str, tmp_path: Path) -> None:
     app = create_app(make_settings(fake_lmstudio, tmp_path), dev_insecure=False)
     async with app.router.lifespan_context(app):  # type: ignore[attr-defined]

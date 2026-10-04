@@ -32,7 +32,8 @@ from localmesh_agent.adapters.discovery.mdns import (
     build_service_ad,
     resolve_advertise_addresses,
 )
-from localmesh_agent.adapters.ports import InferenceBackend, SystemClock
+from localmesh_agent.adapters.ports import InferenceBackend, SystemClock, TailnetInfo
+from localmesh_agent.adapters.tailscale import TailscaleCliProbe
 from localmesh_agent.api.errors import mesh_error_handler
 from localmesh_agent.api.v1 import auth, chat, health, info, models, pair, requests
 from localmesh_agent.api.v1.auth import ChallengeStore
@@ -175,7 +176,18 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         display_name=settings.agent.display_name,
         spki_pin=tls_identity.spki_sha256,
         endpoints=advertised_endpoints(settings, dev_insecure=dev_insecure),
+        listen_port=settings.listen.port,  # T2 candidate URLs (WP-14, §16.1)
     )
+
+    # -- WP-14 (§6.3/§18.6): TailnetProbe port implementation. The probe runs
+    #    at lifespan-startup (subprocess in a thread pool, 2 s timeout per
+    #    §10.5); its snapshot feeds the §10.6 step-7 ready log, the pairing
+    #    QR/status tailnet block (§13.2/§18.6) and — with WP-15 — /device.
+    #    Detection only: never authorization (SEC-N4), never a login manager
+    #    (§18.6). Failures degrade to state="unknown"/None, never block start
+    #    (T-21 spirit: untrusted hints must not take the Agent down).
+    app.state.tailnet_probe = TailscaleCliProbe()
+    app.state.tailnet: TailnetInfo | None = None
 
     # -- WP-11 discovery (§10.6 step 5, FR-AGT-04, §16.2): the advertiser
     #    is created here but STARTED at lifespan-startup, after the registry
@@ -239,6 +251,24 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         # §16.3 background polling continues afterwards.
         await registry.refresh()
         registry.start_polling()
+        # WP-14 (§10.6 step 7): Tailnet status is part of the ready report.
+        # Detection is best effort — any unexpected failure degrades to None
+        # (LAN-only), never blocks the Agent from serving (§18.6, T-21).
+        try:
+            tailnet_info = await app.state.tailnet_probe.status()
+        except Exception:  # noqa: BLE001 — detection degrades, never blocks
+            tailnet_info = None
+        app.state.tailnet = tailnet_info
+        app.state.pairing.tailnet = tailnet_info  # §13.2/§18.6 pairing block
+        # §17.10 allow-listed keys only (component/status); DNS name and IPs
+        # are NOT logged (no allow-listed key, NFR-SEC-02 — QUESTION-102).
+        log.info(
+            "tailscale_status",
+            extra={
+                "component": "tailscale",
+                "status": tailnet_info.state.lower() if tailnet_info is not None else "absent",
+            },
+        )
         # §10.6 step 5 (WP-11): start the mDNS advertisement on the selected
         # interfaces. Failure/degradation must not block Agent start (T-21:
         # advertisements are untrusted hints; MdnsAdvertiser logs, not raises).

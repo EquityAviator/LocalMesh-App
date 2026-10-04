@@ -20,6 +20,33 @@ Format (append below, keep reverse-chronological order — newest first):
 Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARCH-001
 §24); agent-raised questions use QUESTION-101 onwards to avoid ID collisions.
 
+## QUESTION-104 — `tailscale status --json` field names unverified against a real install
+- Date: 2026-10-04
+- Raised by: WP-14 (TailnetProbe adapter, §6.3/§18.6/§22.3)
+- Question: §6.3 marks the CLI contract `[ASSUMPTION — verify against installed
+  version]`: "`tailscale status --json` is expected to expose `BackendState`,
+  `Self.TailscaleIPs`, `Self.DNSName`". No tailscale binary exists in the dev
+  sandbox, so the recorded-output contract test
+  (`agent/tests/contract/test_tailscale_vs_fixtures.py`) ships as an announced
+  skip until an owner capture lands (docs/fixtures/CAPTURE.md §3). Please
+  confirm the field names (and value casing, e.g. `BackendState: "Running"`)
+  on a real install, or provide the capture.
+- Context/evidence: LM-ARCH-001 §6.3 (CLI row), §22.3 WP-14 ("Probe parse
+  tests with recorded `tailscale` output"; "Stop-and-ask if: Tailscale JSON
+  differs"), Appendix G (UNVERIFIED → recorded-fixture test or QUESTION);
+  parser at `agent/src/localmesh_agent/adapters/tailscale.py` implements the
+  documented shape defensively (missing/renamed fields → unknown-info, never
+  exception; IPs filtered to 100.64.0.0/10 per §6.3 addressing; IPv6 dropped
+  per §16.2/CI-25).
+- Why we must not guess: the parser output feeds the pairing QR `ep` list and
+  `endpoints.tailnet` (§13.2/§18.6) — a wrong field name would silently report
+  `null` (or, worse, mis-parse) on real installs; §22.3 explicitly fences this
+  as a stop-and-ask condition.
+- Default if unanswered: parser keeps the §6.3 documented shape; contract test
+  stays an announced skip; surfaces degrade to `tailnet: null` / doctor
+  "unknown" (LAN-only guidance, §18.5). Not blocking M4 Agent-side work.
+- Status: OPEN
+
 ## QUESTION-103 — WP-08 underspecified protocol/admin-surface details
 - Date: 2026-10-04
 - Raised by: WP-08 (pairing/auth/admin implementation)

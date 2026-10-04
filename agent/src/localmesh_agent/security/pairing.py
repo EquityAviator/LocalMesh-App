@@ -48,7 +48,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from urllib.parse import quote
 
-from localmesh_agent.adapters.ports import Clock, Store
+from localmesh_agent.adapters.ports import Clock, Store, TailnetInfo
+from localmesh_agent.adapters.tailscale import t2_endpoint_candidates
 from localmesh_agent.security import crypto
 from localmesh_agent.security.devices import DeviceService
 
@@ -155,6 +156,11 @@ class PairingService:
     display_name: str
     spki_pin: str
     endpoints: tuple[str, ...] = ()  # https endpoint(s) advertised in the QR
+    # WP-14 (§18.6): the Agent "detects" Tailscale and "reports name/IPs … in
+    # pairing `endpoints`". Snapshot injected by the app factory/startup;
+    # `None` = not detected (probe absent/unreadable) → `tailnet: null`.
+    tailnet: TailnetInfo | None = None
+    listen_port: int | None = None  # needed to build T2 candidate URLs (§16.1)
     _session: _Session | None = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _locked_until: int = 0  # open() refused until this wall time (§13.8)
@@ -340,7 +346,10 @@ class PairingService:
                 "status": session.status_value(),
                 "agent_id": self.agent_id,
                 "scopes": list(DEFAULT_SCOPES),
-                "endpoints": {"lan": list(self.endpoints), "tailnet": None},
+                "endpoints": {
+                    "lan": list(self.endpoints),
+                    "tailnet": _tailnet_block(self.tailnet),
+                },
             }
             if session.state is SessionState.APPROVED and session.device_id is not None:
                 # device_id/endpoints only when approved (§13.2).
@@ -451,5 +460,27 @@ class PairingService:
             f"pid={quote(session.pair_id, safe='')}",
             f"sec={crypto.b64url_encode(session.secret)}",
         ]
+        # §17.4 `ep=<urlencoded https endpoint>[&ep=…]` — LAN first (the
+        # operator pairs on LAN, §18.5), then T2 candidates in §16.1 order
+        # (MagicDNS name, then 100.x IPs; §18.5 playbook 2: "QR carries
+        # Tailnet name/IP if the Agent detected them").
         parts.extend(f"ep={quote(endpoint, safe='')}" for endpoint in self.endpoints)
+        parts.extend(
+            f"ep={quote(endpoint, safe='')}"
+            for endpoint in t2_endpoint_candidates(self.tailnet, self.listen_port)
+        )
         return "localmesh://pair?" + "&".join(parts)
+
+
+def _tailnet_block(info: TailnetInfo | None) -> dict[str, object] | None:
+    """§13.2 API-PAIR-02 `endpoints.tailnet` shape: `{"dns", "ips"}` or null.
+
+    Non-null only when a *running* tailnet reported something usable (a dns
+    name or a 100.64.0.0/10 address); otherwise null — the Agent MUST NOT
+    fill unknowns with defaults (§13.2 API-DEV-01 note, same spirit here).
+    """
+    if info is None or info.state.lower() != "running":
+        return None
+    if info.dns_name is None and not info.ips:
+        return None
+    return {"dns": info.dns_name, "ips": list(info.ips)}

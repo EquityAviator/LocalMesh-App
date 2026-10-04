@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from localmesh_agent.config import Settings
 from localmesh_agent.doctor import (
     CHECK_ORDER,
@@ -314,6 +316,41 @@ def test_tailscale_running_is_ok_with_dns_name(tmp_path: Path) -> None:
     ts_findings = [f for f in findings if f.check == "tailscale"]
     assert ts_findings[0].level == "ok"
     assert "pc.tailnet.example" in ts_findings[0].summary  # trailing dot stripped
+
+
+# -- WP-14: the default (real) probe delegates to the shared adapter parser --
+
+
+def test_default_tailscale_probe_uses_shared_parser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """§18.4 + §22.3 WP-14: doctor and the serving Agent must interpret a real
+    install identically — the doctor's subprocess wrapper feeds the SAME
+    `parse_tailscale_status_json` used by `TailscaleCliProbe`."""
+    import subprocess
+
+    from localmesh_agent.adapters.ports import TailnetInfo
+    from localmesh_agent.doctor import _tailscale_probe_default
+
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/tailscale" if name == "tailscale" else None
+    )
+    payload = (
+        '{"BackendState": "Running", "Self": {"DNSName": "pc.tail.ts.net.", '
+        '"TailscaleIPs": ["100.64.9.9", "10.1.2.3"]}}'
+    )
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["tailscale", "status", "--json"], 0, payload, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    info = _tailscale_probe_default()
+    assert info == TailnetInfo(state="Running", dns_name="pc.tail.ts.net", ips=("100.64.9.9",))
+
+
+def test_default_tailscale_probe_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localmesh_agent.doctor import _tailscale_probe_default
+
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    assert _tailscale_probe_default() is None
 
 
 # -- §18.4 check 10: clock (CI-23) -------------------------------------------------------

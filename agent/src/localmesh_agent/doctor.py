@@ -49,6 +49,7 @@ from typing import Any, Literal
 
 from localmesh_agent.adapters.discovery.mdns import default_route_ipv4, resolve_advertise_addresses
 from localmesh_agent.adapters.ports import TailnetInfo
+from localmesh_agent.adapters.tailscale import parse_tailscale_status_json
 from localmesh_agent.config import Settings
 from localmesh_agent.security.tls import KEY_FILENAME, TlsIdentityError, load_identity
 
@@ -286,7 +287,14 @@ def _firewall_probe_default(port: int) -> FirewallState:
 
 
 def _tailscale_probe_default() -> TailnetInfo | None:
-    """`tailscale status --json` [ASSUMPTION §6.3 fields]; None = absent."""
+    """`tailscale status --json` [ASSUMPTION §6.3 fields]; None = absent.
+
+    WP-14: the JSON parsing is delegated to the shared TailnetProbe adapter
+    parser (`adapters.tailscale.parse_tailscale_status_json`) so the doctor
+    ladder and the serving Agent interpret a real install identically (the
+    doctor keeps the sync subprocess because it must also work standalone,
+    before/without the Agent running — §18.4).
+    """
     binary = shutil.which("tailscale")
     if binary is None:
         return None
@@ -298,19 +306,7 @@ def _tailscale_probe_default() -> TailnetInfo | None:
         return TailnetInfo(state="unknown")
     if proc.returncode != 0:
         return TailnetInfo(state="unknown")
-    try:
-        payload = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return TailnetInfo(state="unknown")
-    state = str(payload.get("BackendState") or "unknown")
-    self_obj = payload.get("Self") if isinstance(payload.get("Self"), dict) else {}
-    dns_name = self_obj.get("DNSName")
-    ips = tuple(str(ip) for ip in (self_obj.get("TailscaleIPs") or [])[:2])
-    return TailnetInfo(
-        state=state,
-        dns_name=str(dns_name).rstrip(".") if dns_name else None,
-        ips=ips,
-    )
+    return parse_tailscale_status_json(proc.stdout)
 
 
 def default_probes(settings: Settings) -> DoctorProbes:

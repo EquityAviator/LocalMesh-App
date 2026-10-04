@@ -125,7 +125,41 @@ host OS, capture date, exact commands.
 
 ---
 
-## 3. Checklist to paste back (tick when committed)
+## 3. Tailscale (WP-14 — replace `TSVER` with `tailscale version` output, e.g. `1.88.4`)
+
+WP-14's `tailscale status --json` parser implements the §6.3 `[ASSUMPTION]`
+field names (`BackendState`, `Self.TailscaleIPs`, `Self.DNSName` — "verify
+against installed version", QUESTION-104). The capture below turns the
+announced-skip contract test
+(`agent/tests/contract/test_tailscale_vs_fixtures.py`) into a hard gate and
+verifies those field names against a real install.
+
+```bash
+tailscale version > docs/fixtures/tailscale-version.txt   # paste into README too
+OUT=docs/fixtures/tailscale/TSVER
+mkdir -p "$OUT"
+
+# 1. The state the Agent probes (capture while logged in AND connected —
+#    "Running"; this is the shape the parser and the QR `ep` depend on).
+tailscale status --json > "$OUT/status-running.json"
+
+# 2. (If easy) the logged-out / stopped shape — proves the parser's
+#    degradation paths against reality:
+#    a) run `tailscale down`
+tailscale status --json > "$OUT/status-stopped.json"
+#    b) run `tailscale up` again to restore
+
+# 3. Copy the same captures into the contract-test fixture directory:
+#    cp "$OUT"/status-*.json agent/tests/contract/fixtures/tailscale/TSVER/
+```
+
+Then write `docs/fixtures/tailscale/TSVER/README.md` with: tailscale exact
+version, host OS, capture date, and the exact commands used. Do NOT redact
+JSON — but DO check the capture for anything you consider sensitive (peer
+device names, tags); replacing peer values with obvious placeholders is fine
+as long as the `BackendState` / `Self` structure stays verbatim.
+
+## 4. Checklist to paste back (tick when committed)
 
 - [ ] `docs/fixtures/lmstudio/<version>/api-v1-models.json` (+ headers)
 - [ ] `docs/fixtures/lmstudio/<version>/v1-models.json` (+ headers)
@@ -137,6 +171,8 @@ host OS, capture date, exact commands.
 - [ ] `docs/fixtures/ollama/<version>/chat-completions-stream.txt` (raw SSE)
 - [ ] `docs/fixtures/ollama/<version>/README.md` (version/OS/date/commands)
 - [ ] keep-alive probe result (answers §6.2 [UNVERIFIED])
+- [ ] `docs/fixtures/tailscale/<version>/status-running.json` (+ README)
+- [ ] `agent/tests/contract/fixtures/tailscale/<version>/status-*.json` (flips the WP-14 contract test to a hard gate)
 
 Once committed: delete this file's blocker note in WP-05, run the capture
 commands' outputs through the adapter contract tests, and the fake backends
