@@ -37,6 +37,7 @@ from localmesh_agent.core.registry import CapabilityRegistry
 from localmesh_agent.core.router import Router
 from localmesh_agent.core.scheduler import Scheduler
 from localmesh_agent.observability.logging import configure_logging, get_logger
+from localmesh_agent.security.tls import load_or_create_identity
 from localmesh_agent.store.sqlite import Store
 
 log = get_logger("app")
@@ -79,7 +80,7 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     app.state.started_mono = __import__("time").monotonic()
     app.state.clock = _ClockForHealth()
 
-    # §10.6 step 2-3: migrations + identity (TLS identity arrives WP-07).
+    # §10.6 step 2-3: migrations + identity (agent_id + TLS identity, WP-07).
     data_dir = settings.ensure_data_dir()
     store = Store(data_dir / "agent.db")
     app.state.store = store
@@ -90,6 +91,10 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         identity = store.get_identity()
     assert identity is not None
     app.state.agent_id = str(identity["agent_id"])
+    # §10.6 step 3 (WP-07): ECDSA P-256 self-signed identity; spki_sha256 is
+    # the pin the App will verify against the QR `fp` (§17.3/§17.5, M2).
+    tls_identity = load_or_create_identity(data_dir / "tls")
+    app.state.spki_pin = tls_identity.spki_sha256
 
     # §10.6 step 4: adapters, registry, scheduler, router.
     adapters = build_adapters(settings)

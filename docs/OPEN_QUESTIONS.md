@@ -38,3 +38,22 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
 - Default if unanswered: keep the implemented interpretation (conservative; satisfies
   both statements textually). Not blocking M0 exit; revisit before WP-05.
 - Status: OPEN
+
+## QUESTION-102 — Fingerprint prefix in the "ready" log vs the §17.10 allow-list
+- Date: 2026-10-04
+- Raised by: WP-07 (app startup integration, §10.6 step 3/7)
+- Question: §10.6 step 7 says the "ready" log carries the fingerprint prefix
+  (TLS SPKI pin), but the §17.10 logging allow-list has no key for it and
+  NFR-SEC-02 (P0, "Content never in logs; log field allow-list") binds the
+  formatter to exactly 16 keys. Which wins: add an allow-list key (e.g.
+  `pin_prefix`) or omit the pin from logs?
+- Context/evidence: LM-ARCH-001 §10.6 step 7 vs §17.10 + NFR-SEC-02;
+  formatter drops non-allow-listed keys by construction (agent/src/
+  localmesh_agent/observability/logging.py).
+- Why we must not guess: weakening the allow-list is a SEC-adjacent change
+  (§1.3); logging the pin under an unrelated key (e.g. `status`) would be
+  contract abuse and could confuse CI-ID triage.
+- Default if unanswered: pin is NOT logged (NFR-SEC-02 P0 wins per §1.1
+  precedence; the pin is served to paired Devices in M2 flows instead).
+  Not blocking WP-08.
+- Status: OPEN
