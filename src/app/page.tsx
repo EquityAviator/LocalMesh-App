@@ -15,6 +15,7 @@ import {
   Copy,
   FileCode2,
   FlaskConical,
+  Gauge,
   GitBranch,
   GitCommitHorizontal,
   KeyRound,
@@ -56,6 +57,7 @@ interface WorkPackage {
   reqs: string[];
   commit: string | null;
   notes?: string;
+  blockedBy?: string;
 }
 interface Gate {
   name: string;
@@ -104,11 +106,31 @@ interface MeshEndpoint {
   milestone: string;
   apiId: string;
   note: string;
+  request?: string;
+  responses?: string[];
+  rateLimit?: string;
 }
 interface MeshApiSection {
   basePath: string;
   authNote: string;
   endpoints: MeshEndpoint[];
+}
+interface PerfBudgetRow {
+  metric: string;
+  target: string;
+  basis: string;
+  state: string;
+}
+interface PerfBudgets {
+  specRef: string;
+  harness: string;
+  status: string;
+  rows: PerfBudgetRow[];
+}
+interface Round {
+  label: string;
+  delivered: string;
+  next: string;
 }
 interface StatusPayload {
   project: string;
@@ -120,6 +142,8 @@ interface StatusPayload {
   securityTests: SecurityTest[];
   openQuestions: OpenQuestion[];
   nextSteps: string[];
+  perfBudgets: PerfBudgets;
+  round?: Round;
   meshApi: MeshApiSection;
   doctor: DoctorSection;
   live: {
@@ -237,6 +261,7 @@ export default function Home() {
   const [now, setNow] = useState<number>(() => Date.now());
   const [wpFilter, setWpFilter] = useState<WpFilter>("all");
   const [expandedWp, setExpandedWp] = useState<string | null>(null);
+  const [expandedApi, setExpandedApi] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedDoctor, setCopiedDoctor] = useState(false);
 
@@ -561,6 +586,12 @@ export default function Home() {
                                     {r}
                                   </span>
                                 ))}
+                                {wp.blockedBy && (
+                                  <span className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-600 dark:text-amber-400">
+                                    <Ban className="h-2.5 w-2.5" aria-hidden /> blocked ·{" "}
+                                    {wp.blockedBy}
+                                  </span>
+                                )}
                               </p>
                             </div>
                             <span className="flex shrink-0 items-center gap-1.5">
@@ -772,19 +803,92 @@ export default function Home() {
                     </div>
                   </CardContent>
                 </Card>
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-dashed border-border p-3 text-[11px] leading-relaxed text-muted-foreground">
-                  <Stethoscope className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-dashed border-emerald-500/30 bg-emerald-500/[0.03] p-3 text-[11px] leading-relaxed text-muted-foreground">
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
                   <span>
-                    Delivered this round:{" "}
-                    <span className="font-medium text-foreground">WP-14 Tailnet probe</span> —
-                    the §10.2 <code className="text-[10px]">TailnetProbe</code> port with T2
-                    candidates in QR/status (§18.6); next increment:{" "}
-                    <span className="font-medium text-foreground">WP-15</span> /device (M5) or
-                    owner-driven Android work packages.
+                    <span className="font-medium text-foreground">
+                      {data.round?.label ?? "This round"} delivered:{" "}
+                    </span>
+                    {data.round?.delivered ?? "—"}
+                    {data.round?.next && (
+                      <span className="mt-1 block text-[10px] text-muted-foreground/80">
+                        up next: {data.round.next}
+                      </span>
+                    )}
                   </span>
                 </div>
               </motion.section>
             </div>
+
+            {/* Performance budgets (§19.1) — targets vs measurement status */}
+            <motion.section
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.27 }}
+              aria-labelledby="perf-h"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h2
+                  id="perf-h"
+                  className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  <Gauge className="h-3.5 w-3.5" aria-hidden /> Performance budgets
+                  (§19.1)
+                </h2>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  harness: skeleton · {data.perfBudgets.rows.length} budget rows
+                </span>
+              </div>
+              <Card className="transition-shadow hover:shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">
+                    Targets — “verify with benchmarks at M5”
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    {data.perfBudgets.specRef}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="divide-y divide-border">
+                    {data.perfBudgets.rows.map((row) => (
+                      <div
+                        key={row.metric}
+                        className="group flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors hover:bg-muted/40"
+                      >
+                        <p className="w-full min-w-0 text-xs leading-snug text-foreground sm:w-auto sm:flex-1">
+                          {row.metric}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className="min-w-0 max-w-full shrink whitespace-normal break-words text-left border-emerald-500/30 bg-emerald-500/5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300"
+                        >
+                          {row.target}
+                        </Badge>
+                        <span className="hidden shrink-0 font-mono text-[9px] text-muted-foreground/70 md:inline">
+                          {row.basis}
+                        </span>
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] ${
+                            row.state === "pending-real-backends"
+                              ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              : "border-border bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          <Timer className="h-2.5 w-2.5" aria-hidden />
+                          {row.state === "pending-real-backends"
+                            ? "needs real backends"
+                            : "pending"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+                <CardContent className="flex items-start gap-2 border-t border-dashed border-border px-4 py-2.5 text-[10px] leading-relaxed text-muted-foreground">
+                  <FlaskConical className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                  <span>{data.perfBudgets.harness}</span>
+                </CardContent>
+              </Card>
+            </motion.section>
 
             {/* Connection ladder & doctor (§18.1 · §18.4, WP-13 agent side) */}
             <motion.section
@@ -998,7 +1102,8 @@ export default function Home() {
                   (§13.1 · §13.2)
                 </h2>
                 <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {data.meshApi.endpoints.length} endpoints served · {data.meshApi.basePath}
+                  {data.meshApi.endpoints.length} endpoints served · {data.meshApi.basePath} ·
+                  click a row for wire detail
                 </span>
               </div>
               <Card className="transition-shadow hover:shadow-md">
@@ -1008,69 +1113,141 @@ export default function Home() {
                       const post = ep.method === "POST";
                       const del = ep.method === "DELETE";
                       const newest = ep.milestone === "M5";
+                      const apiExpanded = expandedApi === ep.apiId;
+                      const hasDetail =
+                        Boolean(ep.responses?.length) ||
+                        Boolean(ep.request) ||
+                        Boolean(ep.rateLimit);
                       return (
-                        <div
-                          key={ep.apiId}
-                          className={`group flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 transition-colors hover:bg-muted/40 sm:flex-nowrap ${
-                            newest ? "bg-emerald-500/[0.04]" : ""
-                          }`}
-                        >
-                          <span
-                            className={`inline-flex w-16 shrink-0 justify-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide transition-transform group-hover:scale-[1.03] ${
-                              post
-                                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                                : del
-                                  ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
-                                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            }`}
+                        <div key={ep.apiId}>
+                          <button
+                            type="button"
+                            aria-expanded={apiExpanded}
+                            aria-controls={`api-detail-${ep.apiId}`}
+                            onClick={() => setExpandedApi(apiExpanded ? null : ep.apiId)}
+                            className={`group flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:flex-nowrap ${
+                              newest ? "bg-emerald-500/[0.04]" : ""
+                            } ${apiExpanded ? "bg-muted/40" : ""}`}
                           >
-                            {ep.method}
-                          </span>
-                          <code
-                            className="shrink-0 font-mono text-xs text-foreground"
-                            title={ep.apiId}
-                          >
-                            {data.meshApi.basePath}
-                            {ep.path}
-                          </code>
-                          <Badge
-                            variant="outline"
-                            className={`shrink-0 text-[9px] uppercase tracking-wider transition-colors ${
-                              ep.auth === "public"
-                                ? "text-muted-foreground"
-                                : "border-foreground/30 bg-foreground/[0.04] text-foreground"
-                            }`}
-                          >
-                            {ep.auth === "public" ? (
-                              "no auth"
-                            ) : (
-                              <>
-                                <KeyRound className="h-2.5 w-2.5" /> token
-                              </>
-                            )}
-                          </Badge>
-                          {ep.scope && (
+                            <span
+                              className={`inline-flex w-16 shrink-0 justify-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide transition-transform group-hover:scale-[1.03] ${
+                                post
+                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                  : del
+                                    ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
+                                    : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              }`}
+                            >
+                              {ep.method}
+                            </span>
+                            <code
+                              className="shrink-0 font-mono text-xs text-foreground"
+                              title={ep.apiId}
+                            >
+                              {data.meshApi.basePath}
+                              {ep.path}
+                            </code>
                             <Badge
                               variant="outline"
-                              className="shrink-0 border-border bg-muted/60 font-mono text-[9px] text-foreground/80"
+                              className={`shrink-0 text-[9px] uppercase tracking-wider transition-colors ${
+                                ep.auth === "public"
+                                  ? "text-muted-foreground"
+                                  : "border-foreground/30 bg-foreground/[0.04] text-foreground"
+                              }`}
                             >
-                              {ep.scope}
+                              {ep.auth === "public" ? (
+                                "no auth"
+                              ) : (
+                                <>
+                                  <KeyRound className="h-2.5 w-2.5" /> token
+                                </>
+                              )}
                             </Badge>
-                          )}
-                          <Badge
-                            variant="outline"
-                            className="shrink-0 font-mono text-[9px] text-muted-foreground"
-                          >
-                            {ep.apiId}
-                          </Badge>
-                          {newest && (
-                            <Badge className="shrink-0 border-emerald-500/30 bg-emerald-500/10 text-[9px] text-emerald-600 dark:text-emerald-400">
-                              <Sparkles className="h-2.5 w-2.5" /> new
+                            {ep.scope && (
+                              <Badge
+                                variant="outline"
+                                className="shrink-0 border-border bg-muted/60 font-mono text-[9px] text-foreground/80"
+                              >
+                                {ep.scope}
+                              </Badge>
+                            )}
+                            <Badge
+                              variant="outline"
+                              className="hidden shrink-0 font-mono text-[9px] text-muted-foreground md:inline-flex"
+                            >
+                              {ep.apiId}
                             </Badge>
-                          )}
-                          <span className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:truncate sm:ml-auto sm:max-w-[38%]">
-                            {ep.note}
-                          </span>
+                            {newest && (
+                              <Badge className="hidden shrink-0 border-emerald-500/30 bg-emerald-500/10 text-[9px] text-emerald-600 dark:text-emerald-400 md:inline-flex">
+                                <Sparkles className="h-2.5 w-2.5" /> new
+                              </Badge>
+                            )}
+                            <span className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:truncate sm:ml-auto sm:max-w-[34%]">
+                              {ep.note}
+                            </span>
+                            {hasDetail && (
+                              <ChevronDown
+                                aria-hidden
+                                className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                                  apiExpanded ? "rotate-180" : ""
+                                }`}
+                              />
+                            )}
+                          </button>
+                          <AnimatePresence initial={false}>
+                            {apiExpanded && hasDetail && (
+                              <motion.div
+                                id={`api-detail-${ep.apiId}`}
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.22, ease: "easeOut" }}
+                                className="overflow-hidden border-t border-dashed border-border/70 bg-muted/20"
+                              >
+                                <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-2">
+                                  {ep.request && (
+                                    <div className="min-w-0">
+                                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                        request body
+                                      </p>
+                                      <code className="block break-words rounded border bg-background px-2 py-1.5 font-mono text-[10px] text-foreground">
+                                        {ep.request}
+                                      </code>
+                                    </div>
+                                  )}
+                                  {ep.rateLimit && (
+                                    <div className="min-w-0">
+                                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                        rate limit (§13.8)
+                                      </p>
+                                      <code className="block break-words rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 font-mono text-[10px] text-amber-700 dark:text-amber-300">
+                                        {ep.rateLimit}
+                                      </code>
+                                    </div>
+                                  )}
+                                  {ep.responses && ep.responses.length > 0 && (
+                                    <div
+                                      className={`min-w-0 ${ep.request || ep.rateLimit ? "md:col-span-2" : ""}`}
+                                    >
+                                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                        responses
+                                      </p>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {ep.responses.map((r) => (
+                                          <span
+                                            key={r}
+                                            className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px] text-foreground"
+                                          >
+                                            {r}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       );
                     })}
@@ -1150,7 +1327,7 @@ export default function Home() {
                 id="next-h"
                 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
               >
-                Next milestone — M5 agent completion / M2-M4 app side (§22.1)
+                Next steps (§22.2) — M6+ re-planned when each milestone starts
               </h2>
               <Card className="transition-shadow hover:shadow-md">
                 <CardContent className="p-4">
