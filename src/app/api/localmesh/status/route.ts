@@ -42,6 +42,18 @@ function countLines(files: string[]): number {
   }, 0);
 }
 
+function countTestFunctions(files: string[]): number {
+  // Live "test cases" proxy: count def test_* / async def test_* occurrences.
+  return files.reduce((sum, f) => {
+    try {
+      const src = readFileSync(f, "utf-8");
+      return sum + (src.match(/^\s*(?:async\s+)?def\s+test_\w+/gm) || []).length;
+    } catch {
+      return sum;
+    }
+  }, 0);
+}
+
 function gitHead(): { hash: string; subject: string; date: string } {
   try {
     const hash = execSync("git rev-parse --short HEAD").toString().trim();
@@ -84,6 +96,7 @@ export async function GET() {
         agentSrcFiles: srcFiles.length,
         agentSrcLoc: countLines(srcFiles),
         testFiles: testFiles.length,
+        testFunctions: countTestFunctions(testFiles),
         fakeBackendFiles: fakeFiles.length,
         openQuestionEntries: openQuestions,
       },
