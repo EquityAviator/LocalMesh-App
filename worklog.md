@@ -247,3 +247,38 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（WP-08 配对/认证
 3. 下一 Agent 侧增量（沙箱可做）：WP-11 mDNS advertise（python-zeroconf 已在 lockfile，LGPL 已标注）；以及把 pairing/auth 的安全测试扩展为 §17.13 TC-SEC-03（重放）/TC-SEC-09（限流）正式条目。
 4. Owner actions 不变：fixtures 采集（阻塞 contract tests 硬门）、ADR-017、QUESTION-101/102/103。
 5. 注：本沙箱会在会话间把 HEAD 切回 main，WP-08 提交直接落在 main（d74f25f），wp-08-pairing-auth 分支指针已对齐到同一提交以保留引用。
+
+---
+Task ID: 12 — webDevReview round 3 (WP-11 + TC-SEC-03/09)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + agent-browser QA + 自选开发重点（WP-11 Agent 侧 mDNS + 正式安全测试条目 + 仪表盘增强）。
+
+项目状态判断:
+- QA 全绿：Python gate（ruff/format PASS、mypy --strict PASS、pytest 181 passed + 2 announced skips、import-linter 3/3 KEPT、OpenAPI drift OK、3 security scans PASS）；agent-browser 仪表盘复验（桌面 1280px + 移动 390px、console 零错误、交互功能实测通过）；dev.log 全 200。无 bug → 稳定阶段推进新需求：WP-11（Agent 侧）+ §17.13 正式安全条目。
+
+本轮完成:
+- WP-11（commit 5d6812b）：
+  - `adapters/discovery/mdns.py`：MdnsAdvertiser（zeroconf.asyncio.AsyncZeroconf，端口协议 DiscoveryAdvertiser 的实现）。§16.2 服务契约逐字：type `_localmesh._tcp.local.`、instance `"<display_name> (<first 6 of agent uuid>)"`、TXT `v=1/aid/n/fp(前16字符 pin 提示)/api=v1/po=0|1`（每个值 ≤255B，`n` 截断保护）；`po` 解释为 API-INFO-01 的 pairing_open 镜像（T-21 提示字段，60s 看门狗同步 [DESIGN]）。
+  - 接口选择（FR-AGT-04/CI-24）：`[mdns] interfaces` 非空 → 名称/字面 IP 解析（未知名跳过+告警）；空 → 默认路由接口私网 IPv4（UDP-connect 无包技巧）+ 离线回退全部非虚拟接口 [DESIGN]；虚拟适配器（docker/WSL/Hyper-V/tailscale/VPN…）默认排除；IPv6 不广播（v1）；VPN/公网出口地址一律不广播（宁可不广播也不发错地址）。
+  - §16.2 变更重播：60s [DESIGN] 看门狗重解析地址+同步 po，地址/TXT 未变则 no-op；重播复用同一 AsyncZeroconf 实例（避免 socket 抖动）。
+  - 降级不阻塞启动（T-21）：地址不可解析 → 记日志不注册；start 异常被 app 吞掉降级。§10.6 step 5 接线 + shutdown 对称停止。
+  - QR `ep` 升级：`advertised_endpoints()` 现以解析出的 LAN IPv4 领衔（QUESTION-103 item 5 实现侧完成，hostname 作后备；QUESTION-103 已附实现注记，wire-format 项仍 OPEN）。
+  - 19 个单元测试（TXT 契约/实例名/接口选择/桩 zeroconf 生命周期/po 翻转与地址变更重播/看门狗/降级安全）。
+- TC-SEC-03/TC-SEC-09 正式条目（commit e3f01fc）：
+  - `tests/security/test_tc_sec_03_09.py` 7 条命名测试：proof 重放 403、LOCKED 后合法 proof 仍 429、捕获签名打新挑战 401（nonce 绑定）、挑战单次使用、吊销后 token 重放 401、/info 30/min→429、/auth/challenge 10/min→429（含跨桶隔离验证）。
+  - `tests/security/README.md` 改为 TC-SEC 追溯表（delivered vs pending 及原因）。
+- 仪表盘（commits 5501bc7 + 67e2123）：
+  - 数据：WP-11 done 行、M3 in-progress（琥珀）、mDNS §16.2 gate 行 + §17.13 gate 行、securityTests 区（10 条 TC-SEC 状态）、pytest 数字修正为 183 collected（181+2）、next steps → Doctor v1。
+  - 新功能：WP 列表状态过滤 chips（aria-pressed + 计数）、WP 行展开交付注记（aria-expanded + AnimatePresence 高度动画）、HEAD 哈希点击复制（check 反馈 + sr-only status）、"checked Ns ago" 活跃时间戳、§17.13 安全态势面板、route 增加实时 test-function 计数。
+  - 样式细节：渐变进度条 + 活跃端琥珀脉冲（motion-safe）、WP 行状态左色条 + 选中高亮、gate 行 hover 显示 §ref chip、统计卡 hover 上浮、开问卡 2 列网格 + BLOCKING 强化边框、next steps 序号 hover 变绿、tabular-nums 全量化。
+  - agent-browser 实测：行展开渲染注记、planned 过滤 → 恰好 3 行、桌面+移动截图、console 零错误。
+
+验证结果:
+- merged main = 67e2123（WP-11 5d6812b + security e3f01fc + dashboard 5501bc7/67e2123）。gate 全绿：ruff/format PASS、mypy --strict PASS、pytest 183 collected（181 passed + 2 announced skips）、import-linter 3/3 KEPT、OpenAPI drift OK、3 security scans PASS、fake backends 27/27（未回归）。lint（Next 侧）clean。
+
+未解决问题/风险，下一阶段建议:
+1. **下一沙箱增量 = Doctor v1**（M3, §18.1）：`localmesh-agent doctor` 按 §18.1 连接阶梯自检（config → 数据目录权限 → TLS/证书/pin 前缀打印 → 端口占用 → Backends loopback 可达 → mDNS 广播可见 → 防火墙 best effort → Tailnet CLI → 时钟），findings 以 CI-ID 为键输出——全部 agent 侧、沙箱可测；WP-11 的 resolve/advertise 函数可直接复用。
+2. WP-09/WP-10 + WP-11 App 侧（mesh-core Kotlin、NSD、权限）需 Android/Gradle 环境 → M2/M3 收尾依赖 owner 环境。
+3. Owner actions 不变：fixtures 采集（阻塞 contract tests 硬门）、ADR-017、QUESTION-101/102/103（103 的 wire-format 项 1-4 仍 OPEN）。
+4. mDNS 实机验证待真实 LAN（沙箱多播环境未验证 [Not verified]）；`po` 语义与 QUESTION-103 一起等 owner 确认。
+5. 沙箱注：WP-11 提交落在 main（5d6812b、e3f01fc），wp-11-mdns 分支指针已对齐 e3f01fc。
