@@ -1,0 +1,1265 @@
+     1→{
+     2→  "project": "LocalMesh AI",
+     3→  "governingSpec": "LM-ARCH-001 — docs/LocalMesh_AI_Architecture_and_Requirements.md",
+     4→  "updatedAt": "2026-10-05",
+     5→  "milestones": [
+     6→    {
+     7→      "id": "M0",
+     8→      "name": "Foundations",
+     9→      "status": "done",
+    10→      "detail": "Repo, CI, fake backends, dependency spike, OpenAPI skeleton, governance docs"
+    11→    },
+    12→    {
+    13→      "id": "M1",
+    14→      "name": "Agent core (loopback)",
+    15→      "status": "done",
+    16→      "detail": "Config, store, adapters, registry, scheduler, chat SSE, cancel, /health, CLI run — dev-insecure loopback only"
+    17→    },
+    18→    {
+    19→      "id": "M2",
+    20→      "name": "Secure LAN MVP",
+    21→      "status": "in-progress",
+    22→      "detail": "Agent side done (WP-07 TLS identity + WP-08 pairing/auth/tokens/admin, TLS 1.3 serving, 12/12 E2E smoke); remaining: WP-09 mesh-core Kotlin + WP-10 App (Android build env required)"
+    23→    },
+    24→    {
+    25→      "id": "M3",
+    26→      "name": "Discovery & connection manager",
+    27→      "status": "in-progress",
+    28→      "detail": "Agent side DONE: mDNS advertise (WP-11, §16.2) + Doctor v1 (WP-13 agent CLI, §18.4 ladder, 10 ordered checks, GET /admin/doctor); remaining: App NSD + SM-CONN + Diagnostics screen (Android build env required)"
+    29→    },
+    30→    {
+    31→      "id": "M4",
+    32→      "name": "Remote (Tailnet)",
+    33→      "status": "in-progress",
+    34→      "detail": "Agent side DONE: Tailnet probe (WP-14, §6.3/§18.6) — TailscaleCliProbe (2 s thread-pool timeout), CGNAT-filtered parser, T2 candidates in QR `ep` + pair/status tailnet block; remaining: App-side racing/failover + guidance cards (Android build env required)"
+    35→    },
+    36→    {
+    37→      "id": "M5",
+    38→      "name": "Multi-backend, metrics",
+    39→      "status": "in-progress",
+    40→      "detail": "Agent side COMPLETE: hardware probe + GET /device (WP-15 part 1), POST /models/load|unload (API-MODEL-02/03) + §16.5 keep-warm scheduler (WP-15 part 2, FR-MOD-04/05); remaining: App metrics screen (Android env required)"
+    41→    },
+    42→    {
+    43→      "id": "M6",
+    44→      "name": "Control Plane (optional)",
+    45→      "status": "planned",
+    46→      "detail": "Owner decision Q-05 pending"
+    47→    },
+    48→    {
+    49→      "id": "M7",
+    50→      "name": "Multimodal & Tasks",
+    51→      "status": "planned",
+    52→      "detail": "Vision, Whisper adapter, doc upload + RAG, durable Tasks"
+    53→    },
+    54→    {
+    55→      "id": "M8",
+    56→      "name": "Routing & agent runtime",
+    57→      "status": "planned",
+    58→      "detail": "auto routing, hardware-aware scoring, classifier (flag)"
+    59→    },
+    60→    {
+    61→      "id": "M9",
+    62→      "name": "Hardening & release",
+    63→      "status": "planned",
+    64→      "detail": "Pen-test checklist, pin rotation, installers, signed releases"
+    65→    }
+    66→  ],
+    67→  "workPackages": [
+    68→    {
+    69→      "id": "WP-01",
+    70→      "title": "Repo scaffold, CI, lint, import-linter",
+    71→      "milestone": "M0",
+    72→      "status": "done",
+    73→      "reqs": [
+    74→        "NFR-MAINT-01"
+    75→      ],
+    76→      "commit": "0f844ba",
+    77→      "notes": "§21.1 monorepo layout, §21.4 CI stages as scripts, OpenAPI drift check, 3 security scans"
+    78→    },
+    79→    {
+    80→      "id": "WP-02",
+    81→      "title": "Dependency & API spike — registry-pinned, replaces §6.5",
+    82→      "milestone": "M0",
+    83→      "status": "done",
+    84→      "reqs": [
+    85→        "§6.5"
+    86→      ],
+    87→      "commit": "ab2000b",
+    88→      "notes": "All Agent deps pinned with hashes from live registry capture; evidence archived under docs/spikes/evidence/"
+    89→    },
+    90→    {
+    91→      "id": "WP-03",
+    92→      "title": "Fake backends (LM Studio + Ollama)",
+    93→      "milestone": "M0",
+    94→      "status": "done",
+    95→      "reqs": [
+    96→        "§21.5"
+    97→      ],
+    98→      "commit": "c44762a",
+    99→      "notes": "SSE+[DONE], mid-stream disconnect, cold-load, HTTP 500, shape variants, token auth; 27 self-tests"
+   100→    },
+   101→    {
+   102→      "id": "WP-04",
+   103→      "title": "Agent config (Appendix E), allow-list logging, SQLite store + 0001_init",
+   104→      "milestone": "M1",
+   105→      "status": "done",
+   106→      "reqs": [
+   107→        "FR-AGT-03",
+   108→        "NFR-SEC-02",
+   109→        "§14.1",
+   110→        "§17.10"
+   111→      ],
+   112→      "commit": "f222fcc",
+   113→      "notes": "Unknown config keys rejected; §17.10 allow-list verbatim; §14.1 schema applied verbatim via user_version"
+   114→    },
+   115→    {
+   116→      "id": "WP-05",
+   117→      "title": "Backend adapters (LM Studio / Ollama / OpenAI-compat) + CapabilityRegistry",
+   118→      "milestone": "M1",
+   119→      "status": "done",
+   120→      "reqs": [
+   121→        "FR-MOD-01",
+   122→        "FR-MOD-02",
+   123→        "§10.2-10.4",
+   124→        "§16.3"
+   125→      ],
+   126→      "commit": "8155fcc",
+   127→      "notes": "§10.3 rule-5 SSE parser (partial UTF-8 across chunks); §16.3 merge verbatim; never-guesses-fields AC tested"
+   128→    },
+   129→    {
+   130→      "id": "WP-06",
+   131→      "title": "Scheduler + chat SSE (API-CHAT-01) + cancel + /models + /health + CLI run",
+   132→      "milestone": "M1/M2",
+   133→      "status": "done",
+   134→      "reqs": [
+   135→        "FR-CHAT-01/02/04/05",
+   136→        "NFR-PERF-03",
+   137→        "§16.4"
+   138→      ],
+   139→      "commit": "cb008cc",
+   140→      "notes": "§13.7 wire format incl. 15 s pings; TC-SEC-01 canary; cancel ≤ 2 s via real uvicorn listener"
+   141→    },
+   142→    {
+   143→      "id": "WP-07",
+   144→      "title": "TLS identity — P-256 self-signed cert, SPKI pin (b64url no-pad), renew/rotate",
+   145→      "milestone": "M2",
+   146→      "status": "done",
+   147→      "reqs": [
+   148→        "ADR-006",
+   149→        "§17.3",
+   150→        "§17.5",
+   151→        "§17.6",
+   152→        "§10.6"
+   153→      ],
+   154→      "commit": "af2d0dc",
+   155→      "notes": "Renew keeps pin ⇒ no re-pair; corrupt/half files refuse startup (§10.7); key.pem 0600"
+   156→    },
+   157→    {
+   158→      "id": "WP-08",
+   159→      "title": "Pairing SM-PAIR + auth challenges + opaque Device Tokens + revoke + admin listener + QR + TLS 1.3 serving",
+   160→      "milestone": "M2",
+   161→      "status": "done",
+   162→      "reqs": [
+   163→        "FR-PAIR-01/02/04/06",
+   164→        "§13.2",
+   165→        "§15.2/15.4/15.6",
+   166→        "§17.3-17.7",
+   167→        "ADR-008",
+   168→        "ADR-014"
+   169→      ],
+   170→      "commit": "d74f25f",
+   171→      "notes": "5-bad-proofs LOCKED, TTL 300 s + tombstone 410, revoke kills streams ≤ 5 s (TC-SEC-04), admin Host check (TC-SEC-06)"
+   172→    },
+   173→    {
+   174→      "id": "WP-11",
+   175→      "title": "mDNS advertise (Agent side) — _localmesh._tcp, §16.2 TXT, interface selection",
+   176→      "milestone": "M3",
+   177→      "status": "done",
+   178→      "reqs": [
+   179→        "FR-AGT-04",
+   180→        "FR-CONN-05",
+   181→        "§16.2",
+   182→        "§10.6 step 5",
+   183→        "CI-24"
+   184→      ],
+   185→      "commit": "5d6812b",
+   186→      "notes": "Agent side only. TXT v/aid/n/fp(16-char pin hint)/api/po mirrors pairing_open; CI-24 virtual-adapter exclusion; default-route selection; §16.2 re-announce watchdog [DESIGN 60 s]; QR ep now leads with resolved LAN IPv4 (QUESTION-103 item 5). App NSD + permissions stay with the Android work packages"
+   187→    },
+   188→    {
+   189→      "id": "WP-13 (Agent CLI)",
+   190→      "title": "Doctor v1 — §18.4 connection ladder, CI-keyed findings, GET /admin/doctor, --rotate-tls",
+   191→      "milestone": "M3",
+   192→      "status": "done",
+   193→      "reqs": [
+   194→        "FR-CONN-06",
+   195→        "§18.1-18.4",
+   196→        "§17.5",
+   197→        "§13.1"
+   198→      ],
+   199→      "commit": "8e86f56",
+   200→      "notes": "Agent side only. 10 ordered checks per §18.4; findings {check, level, ci_ids, summary, fix} golden-tested per CI; no-secrets asserted (pin prefix only, §10.6); probes degrade to unknown info — works with Agent stopped; admin endpoint spec-named, X-Admin-Token auth; App Diagnostics screen stays with the Android work packages"
+   201→    },
+   202→    {
+   203→      "id": "WP-14 (Agent side)",
+   204→      "title": "Tailnet probe + T2 candidates — TailnetProbe port, §6.3 defensive parser, QR/status reporting",
+   205→      "milestone": "M4",
+   206→      "status": "done",
+   207→      "reqs": [
+   208→        "FR-CONN-08",
+   209→        "§6.3",
+   210→        "§16.1",
+   211→        "§18.6",
+   212→        "§10.5",
+   213→        "§10.6 step 7",
+   214→        "SEC-N4"
+   215→      ],
+   216→      "commit": "a5ae930",
+   217→      "notes": "Agent side only. TailscaleCliProbe implements the §10.2 TailnetProbe port (None = absent; subprocess in thread pool, 2 s timeout per §10.5); parse_tailscale_status_json is total/defensive (§10.3 rule 2) and shared with the doctor (§18.4 check 9); IPs filtered to 100.64.0.0/10, IPv6 dropped (CI-25); T2 candidates (MagicDNS then 100.x, §16.1 step 4) appended to the QR ep list and pair/status endpoints.tailnet (§13.2/§18.5 playbook 2); tailscale_status ready-log event with allow-listed keys only. Shape is §6.3 [ASSUMPTION] — contract test announced skip until capture (QUESTION-104). App-side racing/failover stays with the Android work packages"
+   218→    },
+   219→    {
+   220→      "id": "WP-15 (part 1)",
+   221→      "title": "Hardware probe + GET /device (API-DEV-01) — psutil OS/CPU/RAM + optional GPUs (nvidia-ml-py per ADR-018)",
+   222→      "milestone": "M5",
+   223→      "status": "done",
+   224→      "reqs": [
+   225→        "FR-STAT-01",
+   226→        "§13.2 API-DEV-01",
+   227→        "§10.2",
+   228→        "§10.5",
+   229→        "§21.2",
+   230→        "ADR-018"
+   231→      ],
+   232→      "commit": "3576fdf",
+   233→      "notes": "Agent side. PsutilHardwareProbe implements the §10.2 HardwareProbe port (all fields nullable — /proc/cpuinfo fallback for CPU model on Linux); NvmlGpuProbe optional per §21.2 (import/init failure → no fabricated GPU entries); CompositeHardwareProbe degrades each part independently. §10.5 timeout bounds the WAIT via asyncio.wait (worker threads are uncancellable — abandoned past deadline, late result discarded). /device: Bearer + models:read (§13.2 API table), lan_addresses reuse §16.2 interface selection, tailnet block mirrors WP-14 probe, gpus [] when none detected (no invented null-GPU). Real-process smoke: live body on loopback matches §13.2 exactly. QUESTION-105 raised: dev-insecure token policy + banner corrected"
+   234→    },
+   235→    {
+   236→      "id": "WP-15 (part 2)",
+   237→      "title": "POST /models/load|unload (API-MODEL-02/03) + §16.5 keep-warm scheduler",
+   238→      "milestone": "M5",
+   239→      "status": "done",
+   240→      "reqs": [
+   241→        "FR-MOD-04",
+   242→        "FR-MOD-05",
+   243→        "§13.2 API-MODEL-02/03",
+   244→        "§16.5",
+   245→        "§6.2",
+   246→        "§10.2",
+   247→        "§10.6"
+   248→      ],
+   249→      "commit": "649cd8f",
+   250→      "notes": "Agent side — completes the Agent-side M5 scope. load/unload: Bearer + models:manage, 202 {\"state\":\"loading\"} verbatim (unload mirrors 'unloaded' — QUESTION-106), 404 MODEL_NOT_FOUND via Router.resolve, 501 UNSUPPORTED_CAPABILITY from the §10.2 base contract (Ollama has no explicit load, §10.3), 422 INVALID_REQUEST allow-list body; no rate limit added (§13.8 exhaustive). KeepWarmScheduler (§16.5): warm set ONLY from models.overrides[].keep_warm, interval = min(idle_unload/2, 240 s) [DESIGN idle=300s per §6.2], keep_warm-capable backends only (Ollama native ping; LM Studio n/a), gated on ≥1 non-revoked device active in 60 min — never warms silently; failures degrade to allow-listed logs (CI-21 mitigation); injectable clock; §10.6 startup order + symmetric stop. Fake Ollama: server-level in-memory state + warm-ping counter (observable via /api/ps). Real-process smoke over the TLS token path: 202/404/501/422/401 + fake state flip observed"
+   251→    },
+   252→    {
+   253→      "id": "WP-09",
+   254→      "title": "mesh-core Kotlin: Keystore, pinned HTTP/SSE",
+   255→      "milestone": "M2",
+   256→      "status": "planned",
+   257→      "reqs": [
+   258→        "FR-PAIR-03/05",
+   259→        "SEC-N1"
+   260→      ],
+   261→      "commit": null,
+   262→      "blockedBy": "Android/Gradle build env (sandbox)"
+   263→    },
+   264→    {
+   265→      "id": "WP-10",
+   266→      "title": "App: pairing flow, agents/models/chat, DB, export",
+   267→      "milestone": "M2",
+   268→      "status": "planned",
+   269→      "reqs": [
+   270→        "FR-MOD-03",
+   271→        "FR-CHAT-03/06/07"
+   272→      ],
+   273→      "commit": null,
+   274→      "blockedBy": "Android/Gradle build env (sandbox) — depends on WP-09 mesh-core"
+   275→    },
+   276→    {
+   277→      "id": "WP-11/12 (App)",
+   278→      "title": "NSD discovery + SM-CONN + permissions (App side)",
+   279→      "milestone": "M3",
+   280→      "status": "planned",
+   281→      "reqs": [
+   282→        "FR-CONN-05/07",
+   283→        "§15.1",
+   284→        "§16.1",
+   285→        "§6.4"
+   286→      ],
+   287→      "commit": null,
+   288→      "blockedBy": "Android/Gradle build env (sandbox)",
+   289→      "notes": "Android build environment required — blocked in sandbox"
+   290→    }
+   291→  ],
+   292→  "gates": [
+   293→    {
+   294→      "name": "ruff check + format",
+   295→      "result": "pass",
+   296→      "ref": "§21.2"
+   297→    },
+   298→    {
+   299→      "name": "mypy --strict (core/ + security/)",
+   300→      "result": "pass",
+   301→      "ref": "§21.2"
+   302→    },
+   303→    {
+   304→      "name": "pytest unit + integration + security",
+   305→      "result": "pass",
+   306→      "detail": "315 collected — 312 passed + 3 announced skips (incl. 3 TC-SEC-10 TLS handshake entries + 3 CI-21 keep-warm chain entries + 3 CI-18/21 cold-load e2e entries + 5 §10.3 rule-4 stream-budget units + 3 TC-SEC-05 fuzz entries + lifespan warning-pin + 19 hardware-probe units); suite emits ZERO warnings since the lifespan migration",
+   307→      "ref": "§21.5"
+   308→    },
+   309→    {
+   310→      "name": "SSE stream robustness — cold-load pings + §10.3 rule-4 budgets (CI-18/21)",
+   311→      "result": "pass",
+   312→      "detail": "FIXED this round: the API layer hard-aborted the first token at 30 s with an uncaught TimeoutError (stream died WITHOUT mesh.error — NFR-REL-02 violation) and the adapter applied the 60 s idle budget to the first-token gap. Now: `: ping` every 15 s until the first token (§13.7 'pings until first token', CI-21 mitigation), first-token gap budgeted at first_token_timeout_seconds (120 s, Appendix E — now actually wired from config), post-first-chunk gaps at 60 s, expiry → terminal mesh.error BACKEND_TIMEOUT (504 retryable); cold-load e2e over the real app + fake backend asserts pings + terminal error + no [DONE]",
+   313→      "ref": "§13.7, §10.3 rule 4, CI-18, CI-21, NFR-REL-02"
+   314→    },
+   315→    {
+   316→      "name": "TC-SEC-05 unauth fuzz of every endpoint (§17.13 L5)",
+   317→      "result": "pass",
+   318→      "detail": "repeatable deterministic battery (no random corpus) enumerated from the app's OWN OpenAPI schema — 12 public routes × 4 auth variants × 7 body variants + admin listener (forged Host → 403, missing/wrong X-Admin-Token → 401): never a 5xx, §13.4 envelope everywhere, no attacker-input reflection, no stack traces, X-Mesh-Request-Id always present; route-set pinned so new endpoints must join the fuzz",
+   319→      "ref": "§17.13 TC-SEC-05, §13.4, ADR-014"
+   320→    },
+   321→    {
+   322→      "name": "App lifecycle = single FastAPI lifespan (§10.6)",
+   323→      "result": "pass",
+   324→      "detail": "deprecated @app.on_event decorators removed (they emitted 228 suite-wide DeprecationWarnings); startup/shutdown symmetry preserved; factory pinned warning-free by test (DeprecationWarning ⇒ error)",
+   325→      "ref": "§10.6, NFR-MAINT-01"
+   326→    },
+   327→    {
+   328→      "name": "TC-SEC-10 TLS 1.3-only scan (§17.13)",
+   329→      "result": "pass",
+   330→      "detail": "repeatable pytest entry with REAL handshakes against the production context builder (security.tls.build_tls13_server_context): TLS 1.3 client negotiates TLSv1.3 + 1.3 cipher suite; TLS 1.2-only client rejected closed on BOTH sides; minimum_version pinned to TLSv1_3",
+   331→      "ref": "§17.13, §17.3"
+   332→    },
+   333→    {
+   334→      "name": "CI-21 chain: keep-warm × mesh.meta (§16.5 · §13.7)",
+   335→      "result": "pass",
+   336→      "detail": "cold chat pins model_state=unloaded at meta-emission time (demand-load still completes); after one §16.5 tick with an active device + registry refresh, the next chat emits model_state=loaded (fake /api/ps → §10.3 state derivation); baseline in-memory model reads loaded",
+   337→      "ref": "§21.4 CI-21, §16.5, §13.7"
+   338→    },
+   339→    {
+   340→      "name": "§19.1 benchmark skeleton",
+   341→      "result": "pass",
+   342→      "detail": "scripts/bench_agent_latency.py — client-observed TTFT + per-chunk gaps (p50/p95/max/mean) through the real ASGI app + fake Ollama; numbers labeled sandbox-relative (NOT Agent-added); honest budget verification needs real Backends per CAPTURE.md",
+   343→      "ref": "§19.1"
+   344→    },
+   345→    {
+   346→      "name": "Model load/unload + keep-warm (API-MODEL-02/03 · §16.5)",
+   347→      "result": "pass",
+   348→      "detail": "202 loading / unloaded, 404 MODEL_NOT_FOUND, 501 UNSUPPORTED_CAPABILITY (cap-gated, §10.3 table), 422 envelope; keep-warm: override-only warm set, min(idle/2, 240 s) interval, 60-min device-activity gate, Ollama-only ping, never-silent; fake /api/ps observable; TLS-path live smoke 202/404/501/422/401",
+   349→      "ref": "§13.2, §16.5, §6.2, FR-MOD-04/05"
+   350→    },
+   351→    {
+   352→      "name": "Admin API conformance — spec-named routes + PATCH grant mechanism (§13.1)",
+   353→      "result": "pass",
+   354→      "ref": "§13.1, §15.4/§15.6, ADR-014"
+   355→    },
+   356→    {
+   357→      "name": "Metrics registry + Prometheus scrape (loopback admin only)",
+   358→      "result": "pass",
+   359→      "ref": "§20.1"
+   360→    },
+   361→    {
+   362→      "name": "Hardware probe + /device (§13.2 API-DEV-01)",
+   363→      "result": "pass",
+   364→      "detail": "PsutilHardwareProbe + NvmlGpuProbe + Composite (per-part degradation); true-timeout thread pool (§10.5 — asyncio.wait bounds the wait, abandoned threads never block the loop); §13.2 verbatim shape, no invented defaults; models:read scope 403 tested; live loopback smoke matches spec",
+   365→      "ref": "§13.2, §10.2, §10.5, FR-STAT-01"
+   366→    },
+   367→    {
+   368→      "name": "Tailnet probe (§6.3 · §18.6)",
+   369→      "result": "pass",
+   370→      "detail": "TailnetProbe port: absent→None, timeout/nonzero/garbage→unknown, CGNAT filter, T2 candidate order (MagicDNS→100.x), QR ep + pair/status block, doctor shares the parser; recorded-output contract test pending capture (QUESTION-104)",
+   371→      "ref": "§6.3, §16.1, §18.6, FR-CONN-08"
+   372→    },
+   373→    {
+   374→      "name": "Doctor ladder (§18.4)",
+   375→      "result": "pass",
+   376→      "detail": "10 ordered checks, golden outputs per CI (CI-03/04/05/06/07/12/15/23/24), ladder-order test, no-secrets assertions, level-mapped exit codes",
+   377→      "ref": "§18.4, FR-CONN-06"
+   378→    },
+   379→    {
+   380→      "name": "Admin token transport = X-Admin-Token",
+   381→      "result": "pass",
+   382→      "detail": "spec-named header enforced (§13.1/T-11); Bearer rejected by test; CLI client + smoke harness aligned; QUESTION-103 item 4 corrected",
+   383→      "ref": "§13.1, §17.13 T-11"
+   384→    },
+   385→    {
+   386→      "name": "mDNS service contract (§16.2)",
+   387→      "result": "pass",
+   388→      "detail": "instance name, TXT keys/values/255B cap, CI-24 exclusion, register/re-announce/stop vs stubbed zeroconf",
+   389→      "ref": "§16.2, FR-AGT-04"
+   390→    },
+   391→    {
+   392→      "name": "TLS pin encoding (b64url no-pad) + lifecycle",
+   393→      "result": "pass",
+   394→      "detail": "create/renew-same-pin/rotate-new-pin/corrupt-refusal",
+   395→      "ref": "§17.3, §17.5, §10.7"
+   396→    },
+   397→    {
+   398→      "name": "Pairing/auth E2E smoke (real uvicorn process)",
+   399→      "result": "pass",
+   400→      "detail": "12/12: TLS 1.3 negotiated, TLS 1.2 refused, QR→SAS→approve→token→/models, fail-closed 401, secret never logged",
+   401→      "ref": "§10.6, §15.4, §17.3"
+   402→    },
+   403→    {
+   404→      "name": "Security test entries (§17.13)",
+   405→      "result": "pass",
+   406→      "detail": "TC-SEC-01/03/04/05/06/09/10 delivered as named tests (05 = deterministic unauth fuzz of every public + admin route; 10 = real-handshake TLS 1.3-only); 02/07/08 pending device/Control-Plane inputs (tests/security/README.md)",
+   407→      "ref": "§17.13"
+   408→    },
+   409→    {
+   410→      "name": "contract tests vs recorded fixtures",
+   411→      "result": "skip-announced",
+   412→      "detail": "real fixtures not yet captured (Backends + tailscale status) — owner action",
+   413→      "ref": "§10.3 rule 1"
+   414→    },
+   415→    {
+   416→      "name": "import-linter (§10.1 dependency rule)",
+   417→      "result": "pass",
+   418→      "detail": "3/3 contracts KEPT",
+   419→      "ref": "§10.1"
+   420→    },
+   421→    {
+   422→      "name": "OpenAPI drift check",
+   423→      "result": "pass",
+   424→      "detail": "spec mirrors served API (12 paths incl. /models/load|unload, /device, /info, /pair/*, /auth/*)",
+   425→      "ref": "§21.3, NFR-MAINT-01"
+   426→    },
+   427→    {
+   428→      "name": "Cleartext manifest scan (SEC-N1)",
+   429→      "result": "vacuous-pass",
+   430→      "detail": "no Android project yet — activates automatically",
+   431→      "ref": "§17.9"
+   432→    },
+   433→    {
+   434→      "name": "Content-column scan (SEC-N3)",
+   435→      "result": "pass",
+   436→      "ref": "ADR-011"
+   437→    },
+   438→    {
+   439→      "name": "Secret scan",
+   440→      "result": "pass",
+   441→      "ref": "§17.11"
+   442→    },
+   443→    {
+   444→      "name": "pip-audit on committed lockfile",
+   445→      "result": "pass",
+   446→      "detail": "no known vulnerabilities",
+   447→      "ref": "§17.11"
+   448→    }
+   449→  ],
+   450→  "securityTests": [
+   451→    {
+   452→      "id": "TC-SEC-01",
+   453→      "title": "Canary — no Content at rest / in logs / stdout",
+   454→      "status": "delivered",
+   455→      "where": "tests/security/test_canary.py"
+   456→    },
+   457→    {
+   458→      "id": "TC-SEC-03",
+   459→      "title": "Replayed pairing/auth fails (proof, signature, challenge, token)",
+   460→      "status": "delivered",
+   461→      "where": "tests/security/test_tc_sec_03_09.py"
+   462→    },
+   463→    {
+   464→      "id": "TC-SEC-04",
+   465→      "title": "Revoked device blocked + streams killed ≤ 5 s",
+   466→      "status": "delivered",
+   467→      "where": "tests/integration/test_pairing_auth.py"
+   468→    },
+   469→    {
+   470→      "id": "TC-SEC-06",
+   471→      "title": "Host-header / DNS-rebinding vs admin + token negative paths",
+   472→      "status": "delivered",
+   473→      "where": "tests/integration/test_pairing_auth.py"
+   474→    },
+   475→    {
+   476→      "id": "TC-SEC-09",
+   477→      "title": "Rate-limit / lockout behaviour (/info, /auth/challenge, PAIRING_LOCKED)",
+   478→      "status": "delivered",
+   479→      "where": "tests/security/test_tc_sec_03_09.py"
+   480→    },
+   481→    {
+   482→      "id": "TC-SEC-02",
+   483→      "title": "Pin mismatch aborts without sending secret",
+   484→      "status": "pending",
+   485→      "where": "needs on-device mesh-core (WP-09)"
+   486→    },
+   487→    {
+   488→      "id": "TC-SEC-05",
+   489→      "title": "Unauth fuzz of every endpoint",
+   490→      "status": "delivered",
+   491→      "where": "tests/security/test_tc_sec_05_fuzz.py — public routes from the served OpenAPI schema + admin listener guard"
+   492→    },
+   493→    {
+   494→      "id": "TC-SEC-07",
+   495→      "title": "Release manifest scan",
+   496→      "status": "vacuous",
+   497→      "where": "activates when Android project exists"
+   498→    },
+   499→    {
+   500→      "id": "TC-SEC-08",
+   501→      "title": "Content-column schema scan (Control Plane)",
+   502→      "status": "pending",
+   503→      "where": "needs Control Plane (M6)"
+   504→    },
+   505→    {
+   506→      "id": "TC-SEC-10",
+   507→      "title": "TLS config scan (only 1.3) — real handshakes vs production context",
+   508→      "status": "delivered",
+   509→      "where": "tests/security/test_tc_sec_10_tls13.py · build_tls13_server_context (security/tls.py)"
+   510→    }
+   511→  ],
+   512→  "openQuestions": [
+   513→    {
+   514→      "id": "QUESTION-106",
+   515→      "title": "POST /models/unload response body state (§13.2 shows only the load state)",
+   516→      "status": "OPEN",
+   517→      "impact": "implemented mirrored {\"state\":\"unloaded\"} from the closed §13.5 vocabulary (literal reading would render 'loading…' forever in the App); one-line diff if overruled; not blocking M5"
+   518→    },
+   519→    {
+   520→      "id": "ADR-018",
+   521→      "title": "NVIDIA NVML binding = nvidia-ml-py (pynvml deprecated upstream)",
+   522→      "status": "PROPOSED",
+   523→      "impact": "WP-02 pre-registered M5 decision rule triggered by the pynvml FutureWarning; same 'pynvml' module name, zero runtime/test diff; owner approval requested"
+   524→    },
+   525→    {
+   526→      "id": "QUESTION-105",
+   527→      "title": "Does --dev-insecure-loopback (§17.9) waive Device Token auth?",
+   528→      "status": "OPEN",
+   529→      "impact": "deps.py bypasses tokens on the dev loopback (M1-compat per-process Device); §17.7/§17.9 silent — CLI banner corrected, behavior unchanged pending owner answer; production TLS listener unaffected (always token-enforced)"
+   530→    },
+   531→    {
+   532→      "id": "QUESTION-104",
+   533→      "title": "tailscale status --json field names unverified against a real install",
+   534→      "status": "OPEN",
+   535→      "impact": "§6.3 CLI fields are [ASSUMPTION]; parser ships per documented shape + announced-skip contract test; capture via docs/fixtures/CAPTURE.md §3 flips it to a hard gate"
+   536→    },
+   537→    {
+   538→      "id": "QUESTION-103",
+   539→      "title": "WP-08 underspecified protocol/admin-surface details",
+   540→      "status": "OPEN",
+   541→      "impact": "Item 4 (admin header) RESOLVED this round: X-Admin-Token per §13.1/T-11. Still OPEN: items 1-2 (HMAC framing / nonce encoding wire format), route names for operator actions",
+   542→      "note": "Round 10: item 4 (admin route names) RESOLVED — §13.1 does enumerate the routes; spec-named primaries implemented, aliases kept."
+   543→    },
+   544→    {
+   545→      "id": "QUESTION-102",
+   546→      "title": "Fingerprint prefix in ready log vs §17.10 allow-list",
+   547→      "status": "OPEN",
+   548→      "impact": "NFR-SEC-02 (P0) wins by precedence — pin omitted from logs until owner adds an allow-list key"
+   549→    },
+   550→    {
+   551→      "id": "QUESTION-101",
+   552→      "title": "Ports-layer interpretation of the §10.1 dependency rule",
+   553→      "status": "OPEN",
+   554→      "impact": "Conservative interpretation adopted and enforced by import-linter; owner confirmation welcome"
+   555→    },
+   556→    {
+   557→      "id": "ADR-017",
+   558→      "title": "Python build backend (setuptools)",
+   559→      "status": "PROPOSED",
+   560→      "impact": "Needed to install the Agent package; owner approval required"
+   561→    },
+   562→    {
+   563→      "id": "FIXTURES",
+   564→      "title": "Real LM Studio / Ollama response recordings",
+   565→      "status": "BLOCKING",
+   566→      "impact": "Blocks WP-05 contract tests as hard gates; capture via docs/fixtures/CAPTURE.md"
+   567→    },
+   568→    {
+   569→      "id": "Q-08",
+   570→      "title": "Project license (permissive vs copyleft)",
+   571→      "status": "OPEN",
+   572→      "impact": "zeroconf 0.151.5 is LGPL-2.1-or-later — flagged under CON-03"
+   573→    }
+   574→  ],
+   575→  "nextSteps": [
+   576→    "Agent-side M2–M5 surface + admin API + §20.1 metrics are complete; remaining WP (09/10/11-App/12/13-App) need the Android/Gradle build environment (mesh-core Kotlin, NSD discovery, SM-CONN, Diagnostics screen)",
+   577→    "Owner actions unchanged: fixtures capture (LM Studio/Ollama/tailscale — hard gate on contract tests), ADR-017/018 approvals, QUESTION-101/102/104/105/106 (QUESTION-103 item 4 resolved this round)",
+   578→    "Sandbox-capable leftovers: full-src mypy --strict scope decision (26 non-CI-scope findings — owner call); CI-19/20 are client-side and land with Android work; §19.1 Agent-added numbers need real backends",
+   579→    "Real-LAN validation of mDNS advertisement, doctor LAN probes (CI-06/07), tailscale probe, and Prometheus scraping on owner hardware (sandbox has no tailscale binary; multicast unverified)"
+   580→  ],
+   581→  "streamLifecycle": {
+   582→    "specRef": "§13.7 SSE wire format · §10.3 rule 4 timeout budgets · CI-18/CI-21",
+   583→    "fixedThisRound": "the API layer used to hard-abort the first token at 30 s (uncaught TimeoutError — no mesh.error, no pings); cold loads now keep the stream alive with 15 s pings and end failures with a terminal mesh.error",
+   584→    "phases": [
+   585→      {
+   586→        "id": "queued",
+   587→        "name": "Queued",
+   588→        "emits": [
+   589→          ": ping · 15 s"
+   590→        ],
+   591→        "budget": "per-device 2 active · global queue 8 (§13.8)",
+   592→        "note": "FIFO by slot-waiter order; cancel while queued surfaces CANCELLED"
+   593→      },
+   594→      {
+   595→        "id": "meta",
+   596→        "name": "mesh.meta",
+   597→        "emits": [
+   598→          "event: mesh.meta"
+   599→        ],
+   600→        "budget": "first named event — always",
+   601→        "note": "request_id · model · backend · queued_ms · model_state"
+   602→      },
+   603→      {
+   604→        "id": "loading",
+   605→        "name": "Cold load",
+   606→        "emits": [
+   607→          ": ping · 15 s"
+   608→        ],
+   609→        "budget": "first token ≤ 120 s (limits.first_token_timeout_seconds, Appendix E)",
+   610→        "note": "pings until the first token (CI-21); expiry → terminal mesh.error BACKEND_TIMEOUT (504, retryable)"
+   611→      },
+   612→      {
+   613→        "id": "streaming",
+   614→        "name": "Streaming deltas",
+   615→        "emits": [
+   616→          "chat.completion.chunk"
+   617→        ],
+   618→        "budget": "gap between chunks ≤ 60 s · total stream ≤ 900 s",
+   619→        "note": "idle expiry → BACKEND_TIMEOUT; total cap → DEADLINE_EXCEEDED; client disconnect aborts upstream ≤ 1 s (§13.7 cancel)"
+   620→      },
+   621→      {
+   622→        "id": "stats",
+   623→        "name": "mesh.stats + [DONE]",
+   624→        "emits": [
+   625→          "event: mesh.stats",
+   626→          "data: [DONE]"
+   627→        ],
+   628→        "budget": "last named event before [DONE]",
+   629→        "note": "ttft_ms · tokens_out · tokens_per_sec · finish_reason · token_count_source"
+   630→      },
+   631→      {
+   632→        "id": "error",
+   633→        "name": "mesh.error — terminal",
+   634→        "emits": [
+   635→          "event: mesh.error"
+   636→        ],
+   637→        "budget": "no [DONE] follows",
+   638→        "note": "every mid-stream failure ends here — never a hang (NFR-REL-02); the phone kills streams silent ≥ 45 s (CI-18) — the pings exist to prevent exactly that"
+   639→      }
+   640→    ]
+   641→  },
+   642→  "perfBudgets": {
+   643→    "specRef": "§19.1 — targets [DESIGN]; verify with benchmarks at M5; levers in §19.2",
+   644→    "harness": "scripts/bench_agent_latency.py — client-observed TTFT + per-chunk gaps, in-process ASGI + fake Ollama; sandbox-relative only",
+   645→    "status": "skeleton",
+   646→    "rows": [
+   647→      {
+   648→        "metric": "Agent-added latency (request in → first upstream byte), p95, LAN",
+   649→        "target": "≤ 25 ms",
+   650→        "basis": "[DESIGN]",
+   651→        "state": "pending-real-backends"
+   652→      },
+   653→      {
+   654→        "metric": "Agent-added per-chunk latency, p95",
+   655→        "target": "≤ 10 ms",
+   656→        "basis": "[DESIGN]",
+   657→        "state": "pending-real-backends"
+   658→      },
+   659→      {
+   660→        "metric": "TTFT excluding cold model load, small prompt, LAN",
+   661→        "target": "< 1 s",
+   662→        "basis": "[SRC Executive_Summary]",
+   663→        "state": "pending-real-backends"
+   664→      },
+   665→      {
+   666→        "metric": "TTFT over Tailnet",
+   667→        "target": "< 5 s",
+   668→        "basis": "[SRC Executive_Summary]",
+   669→        "state": "pending"
+   670→      },
+   671→      {
+   672→        "metric": "Connection establishment on LAN (discovery known)",
+   673→        "target": "≤ 2 s",
+   674→        "basis": "[DESIGN]",
+   675→        "state": "pending"
+   676→      },
+   677→      {
+   678→        "metric": "UI render cadence while streaming",
+   679→        "target": "50–100 ms batches, no dropped frames > 5 % on a mid-range phone",
+   680→        "basis": "[SRC Architecting]",
+   681→        "state": "pending"
+   682→      },
+   683→      {
+   684→        "metric": "Agent idle memory (excluding Backends)",
+   685→        "target": "≤ 150 MB",
+   686→        "basis": "[DESIGN]",
+   687→        "state": "pending"
+   688→      },
+   689→      {
+   690→        "metric": "Bandwidth",
+   691→        "target": "≈ 10 KB JSON per ~1000 tokens plus SSE framing",
+   692→        "basis": "[SRC Executive_Summary]",
+   693→        "state": "pending"
+   694→      }
+   695→    ]
+   696→  },
+   697→  "round": {
+   698→    "label": "Round 10",
+   699→    "delivered": "Admin API conformance pass (§13.1): spec-named routes primary (pairing/*, GET /admin/pairing, PATCH+DELETE /admin/devices/{id}, GET /admin/status) with WP-08 names as aliases, PATCH = the operator scope-grant mechanism; §20.1 metrics registry (10 families) + GET /admin/metrics Prometheus scrape (loopback admin only); QUESTION-103 item 4 RESOLVED; real-process smoke verified",
+   700→    "next": "owner-driven fixtures/Android work; sandbox candidates: none blocking"
+   701→  },
+   702→  "meshApi": {
+   703→    "basePath": "/mesh/v1",
+   704→    "authNote": "Token = Bearer Device Token (§17.7); admin routes live on the loopback listener only (ADR-014)",
+   705→    "endpoints": [
+   706→      {
+   707→        "method": "GET",
+   708→        "path": "/info",
+   709→        "auth": "public",
+   710→        "scope": null,
+   711→        "milestone": "M2",
+   712→        "apiId": "API-INFO-01",
+   713→        "note": "pre-auth discovery/probe; 30/min per IP (§13.8)",
+   714→        "responses": [
+   715→          "200 · Agent identity + capability snapshot"
+   716→        ],
+   717→        "rateLimit": "30/min per source IP (§13.8)"
+   718→      },
+   719→      {
+   720→        "method": "POST",
+   721→        "path": "/pair/claim",
+   722→        "auth": "public",
+   723→        "scope": null,
+   724→        "milestone": "M2",
+   725→        "apiId": "API-PAIR-01",
+   726→        "note": "202 awaiting_confirmation; LOCKED/EXPIRED tombstone paths",
+   727→        "request": "{ pairing_secret, device_name, platform, spki_hash }",
+   728→        "responses": [
+   729→          "202 · awaiting_confirmation",
+   730→          "403 · CLAIM_REPLAYED / DENIED",
+   731→          "410 · session expired (tombstone)",
+   732→          "429 · PAIRING_LOCKED after 5 bad proofs"
+   733→        ],
+   734→        "rateLimit": "10/min per IP+device_id (§13.8)"
+   735→      },
+   736→      {
+   737→        "method": "POST",
+   738→        "path": "/pair/status",
+   739→        "auth": "public",
+   740→        "scope": null,
+   741→        "milestone": "M2",
+   742→        "apiId": "API-PAIR-02",
+   743→        "note": "approved → device_id + endpoints; SAS at /admin/pair/pending",
+   744→        "request": "{ pairing_secret }",
+   745→        "responses": [
+   746→          "200 · state machine word (§15.2)",
+   747→          "approved · device_id + token + endpoints"
+   748→        ],
+   749→        "rateLimit": "10/min per IP+device_id (§13.8)"
+   750→      },
+   751→      {
+   752→        "method": "POST",
+   753→        "path": "/auth/challenge",
+   754→        "auth": "public",
+   755→        "scope": null,
+   756→        "milestone": "M2",
+   757→        "apiId": "API-AUTH-01",
+   758→        "note": "anti-enumeration; single-use 30 s; 10/min per IP+device",
+   759→        "request": "{ device_id }",
+   760→        "responses": [
+   761→          "200 · challenge nonce (identical shape for unknown ids)",
+   762→          "401 · AUTH_FAILED"
+   763→        ],
+   764→        "rateLimit": "10/min per IP+device_id (§13.8)"
+   765→      },
+   766→      {
+   767→        "method": "POST",
+   768→        "path": "/auth/token",
+   769→        "auth": "public",
+   770→        "scope": null,
+   771→        "milestone": "M2",
+   772→        "apiId": "API-AUTH-02",
+   773→        "note": "signed nonce → 15-min opaque token (§14.1/§17.8)",
+   774→        "request": "{ device_id, challenge, signature (P-256) }",
+   775→        "responses": [
+   776→          "200 · opaque Device Token + scopes",
+   777→          "401 · AUTH_FAILED (uniform, no enumeration)"
+   778→        ],
+   779→        "rateLimit": "10/min per IP+device_id (§13.8)"
+   780→      },
+   781→      {
+   782→        "method": "GET",
+   783→        "path": "/models",
+   784→        "auth": "token",
+   785→        "scope": "models:read",
+   786→        "milestone": "M1/M2",
+   787→        "apiId": "API-MODEL-01",
+   788→        "note": "§16.3 merged CapabilityRegistry view",
+   789→        "responses": [
+   790→          "200 · models[] with §13.5 provenance envelopes"
+   791→        ],
+   792→        "rateLimit": "none (§13.8 exhaustive)"
+   793→      },
+   794→      {
+   795→        "method": "POST",
+   796→        "path": "/models/load",
+   797→        "auth": "token",
+   798→        "scope": "models:manage",
+   799→        "milestone": "M5",
+   800→        "apiId": "API-MODEL-02",
+   801→        "note": "202 {\"state\":\"loading\"}; 501 when adapter lacks the cap; 404 unknown id",
+   802→        "request": "{ mesh_model_id } (allow-list validated)",
+   803→        "responses": [
+   804→          "202 · {\"state\":\"loading\"} verbatim",
+   805→          "404 · MODEL_NOT_FOUND",
+   806→          "422 · INVALID_REQUEST envelope",
+   807→          "501 · UNSUPPORTED_CAPABILITY"
+   808→        ],
+   809→        "rateLimit": "none (§13.8 exhaustive)"
+   810→      },
+   811→      {
+   812→        "method": "POST",
+   813→        "path": "/models/unload",
+   814→        "auth": "token",
+   815→        "scope": "models:manage",
+   816→        "milestone": "M5",
+   817→        "apiId": "API-MODEL-03",
+   818→        "note": "202 mirrored 'unloaded' (QUESTION-106); Ollama → 501 (§10.3)",
+   819→        "request": "{ mesh_model_id } (allow-list validated)",
+   820→        "responses": [
+   821→          "202 · {\"state\":\"unloaded\"} (QUESTION-106)",
+   822→          "404 · MODEL_NOT_FOUND",
+   823→          "501 · UNSUPPORTED_CAPABILITY (Ollama)"
+   824→        ],
+   825→        "rateLimit": "none (§13.8 exhaustive)"
+   826→      },
+   827→      {
+   828→        "method": "GET",
+   829→        "path": "/health",
+   830→        "auth": "token",
+   831→        "scope": "models:read",
+   832→        "milestone": "M1/M2",
+   833→        "apiId": "API-HEALTH-01",
+   834→        "note": "ok/degraded/down + queue depth",
+   835→        "responses": [
+   836→          "200 · status, uptime_s, backends[], queue_depth"
+   837→        ],
+   838→        "rateLimit": "none (§13.8 exhaustive)"
+   839→      },
+   840→      {
+   841→        "method": "GET",
+   842→        "path": "/device",
+   843→        "auth": "token",
+   844→        "scope": "models:read",
+   845→        "milestone": "M5",
+   846→        "apiId": "API-DEV-01",
+   847→        "note": "best-effort hardware/network; all fields nullable (FR-STAT-01)",
+   848→        "responses": [
+   849→          "200 · §13.2 verbatim shape (os/cpu/ram/gpu/network)",
+   850→          "gpus [] when none detected — never invented"
+   851→        ],
+   852→        "rateLimit": "none (§13.8 exhaustive)"
+   853→      },
+   854→      {
+   855→        "method": "POST",
+   856→        "path": "/chat/completions",
+   857→        "auth": "token",
+   858→        "scope": "chat",
+   859→        "milestone": "M1/M2",
+   860→        "apiId": "API-CHAT-01",
+   861→        "note": "SSE §13.7; 15 s pings while queued AND during cold-load first-token wait; §10.3 rule-4 budgets; cancel ≤ 1 s upstream",
+   862→        "request": "{ model, messages[], stream:true, …OpenAI-compatible }",
+   863→        "responses": [
+   864→          "200 · text/event-stream (mesh.meta → deltas → mesh.stats → [DONE])",
+   865→          "cold load: `: ping` every 15 s until first token (CI-21)",
+   866→          "first token > 120 s · stream ends mesh.error BACKEND_TIMEOUT (504)",
+   867→          "413 · PAYLOAD_TOO_LARGE (§13.8 body limit)",
+   868→          "503 · BUSY / QUEUE_FULL"
+   869→        ],
+   870→        "rateLimit": "per-device active generations (§13.8 scheduler)"
+   871→      },
+   872→      {
+   873→        "method": "DELETE",
+   874→        "path": "/requests/{id}",
+   875→        "auth": "token",
+   876→        "scope": "chat",
+   877→        "milestone": "M1/M2",
+   878→        "apiId": "API-REQ-01",
+   879→        "note": "202 cancelling; idempotent; 403 cross-device",
+   880→        "responses": [
+   881→          "202 · cancelling",
+   882→          "403 · cross-device cancel denied",
+   883→          "404 · unknown request"
+   884→        ],
+   885→        "rateLimit": "none (§13.8 exhaustive)"
+   886→      }
+   887→    ]
+   888→  },
+   889→  "doctor": {
+   890→    "cli": "localmesh-agent doctor [--config] [--json] [--rotate-tls]",
+   891→    "adminEndpoint": "GET /admin/doctor",
+   892→    "commit": "8e86f56",
+   893→    "exitCodes": "0 ok/info · 1 warn · 2 error",
+   894→    "ladder": [
+   895→      {
+   896→        "level": "L0",
+   897→        "requirement": "Phone has a usable network",
+   898→        "failure": "airplane mode, no signal",
+   899→        "coverage": "app"
+   900→      },
+   901→      {
+   902→        "level": "L1",
+   903→        "requirement": "Agent host awake and online",
+   904→        "failure": "PC asleep/hibernating (CI-29)",
+   905→        "coverage": "agent"
+   906→      },
+   907→      {
+   908→        "level": "L2",
+   909→        "requirement": "IP path (same subnet or Tailnet)",
+   910→        "failure": "AP isolation, VLAN, Tailscale off (CI-01/02/13/14)",
+   911→        "coverage": "shared"
+   912→      },
+   913→      {
+   914→        "level": "L3",
+   915→        "requirement": "Phone OS permits the traffic",
+   916→        "failure": "Android local-network permission (CI-09)",
+   917→        "coverage": "app"
+   918→      },
+   919→      {
+   920→        "level": "L4",
+   921→        "requirement": "Name resolution",
+   922→        "failure": "mDNS blocked, .local unresolved (CI-01, CI-08)",
+   923→        "coverage": "shared"
+   924→      },
+   925→      {
+   926→        "level": "L5",
+   927→        "requirement": "Firewall / port",
+   928→        "failure": "Firewall Public profile, wrong port (CI-03, CI-04)",
+   929→        "coverage": "agent"
+   930→      },
+   931→      {
+   932→        "level": "L6",
+   933→        "requirement": "TLS identity",
+   934→        "failure": "pin mismatch (CI-12)",
+   935→        "coverage": "agent"
+   936→      },
+   937→      {
+   938→        "level": "L7",
+   939→        "requirement": "Mesh API reachable and compatible",
+   940→        "failure": "version mismatch (CI-30)",
+   941→        "coverage": "agent"
+   942→      },
+   943→      {
+   944→        "level": "L8",
+   945→        "requirement": "Authenticated",
+   946→        "failure": "revoked/unpaired (CI-12b)",
+   947→        "coverage": "shared"
+   948→      },
+   949→      {
+   950→        "level": "L9",
+   951→        "requirement": "Backend up and model usable",
+   952→        "failure": "Backend stopped, model not loaded (CI-05, CI-21)",
+   953→        "coverage": "agent"
+   954→      },
+   955→      {
+   956→        "level": "L10",
+   957→        "requirement": "Stream survives",
+   958→        "failure": "proxy buffering, network switch (CI-17..20)",
+   959→        "coverage": "shared"
+   960→      }
+   961→    ],
+   962→    "checks": [
+   963→      {
+   964→        "order": 1,
+   965→        "id": "config",
+   966→        "title": "Config valid (Appendix E strict contract)",
+   967→        "ciIds": [],
+   968→        "where": "doctor.py :: run_doctor"
+   969→      },
+   970→      {
+   971→        "order": 2,
+   972→        "id": "data_dir",
+   973→        "title": "Data dir + TLS key perms owner-only (§14.1/§17.6)",
+   974→        "ciIds": [
+   975→          "CI-12"
+   976→        ],
+   977→        "where": "doctor.py :: _check_data_dir"
+   978→      },
+   979→      {
+   980→        "order": 3,
+   981→        "id": "tls",
+   982→        "title": "TLS identity valid — pin PREFIX printed (§10.6)",
+   983→        "ciIds": [
+   984→          "CI-12"
+   985→        ],
+   986→        "where": "doctor.py :: _check_tls"
+   987→      },
+   988→      {
+   989→        "order": 4,
+   990→        "id": "port",
+   991→        "title": "Port free / listening (self-ID via /info) / occupied",
+   992→        "ciIds": [
+   993→          "CI-04"
+   994→        ],
+   995→        "where": "doctor.py :: _check_port"
+   996→      },
+   997→      {
+   998→        "order": 5,
+   999→        "id": "backends",
+  1000→        "title": "Backends reachable on loopback (§6 probe paths)",
+  1001→        "ciIds": [
+  1002→          "CI-05"
+  1003→        ],
+  1004→        "where": "doctor.py :: _check_backends"
+  1005→      },
+  1006→      {
+  1007→        "order": 6,
+  1008→        "id": "backend_bind",
+  1009→        "title": "Backend LAN-exposure warnings (bind audit)",
+  1010→        "ciIds": [
+  1011→          "CI-06",
+  1012→          "CI-07"
+  1013→        ],
+  1014→        "where": "doctor.py :: _check_backend_bind"
+  1015→      },
+  1016→      {
+  1017→        "order": 7,
+  1018→        "id": "mdns",
+  1019→        "title": "mDNS advertisement on selected interfaces (T-21 hint)",
+  1020→        "ciIds": [
+  1021→          "CI-24",
+  1022→          "CI-01"
+  1023→        ],
+  1024→        "where": "doctor.py :: _check_mdns"
+  1025→      },
+  1026→      {
+  1027→        "order": 8,
+  1028→        "id": "firewall",
+  1029→        "title": "Firewall rule for TCP 8443 (OS best effort)",
+  1030→        "ciIds": [
+  1031→          "CI-03"
+  1032→        ],
+  1033→        "where": "doctor.py :: _check_firewall"
+  1034→      },
+  1035→      {
+  1036→        "order": 9,
+  1037→        "id": "tailscale",
+  1038→        "title": "Tailnet status via tailscale CLI [ASSUMPTION §6.3]",
+  1039→        "ciIds": [
+  1040→          "CI-15"
+  1041→        ],
+  1042→        "where": "doctor.py :: _check_tailscale"
+  1043→      },
+  1044→      {
+  1045→        "order": 10,
+  1046→        "id": "clock",
+  1047→        "title": "Clock sanity (token expiry is monotonic by design)",
+  1048→        "ciIds": [
+  1049→          "CI-23"
+  1050→        ],
+  1051→        "where": "doctor.py :: _check_clock"
+  1052→      }
+  1053→    ]
+  1054→  },
+  1055→  "adminApi": {
+  1056→    "listener": "127.0.0.1:8444 (HTTP, loopback-only)",
+  1057→    "authNote": "ADR-014: per-install admin token file (0600) via X-Admin-Token header (spec-named, §13.1 + §17.13 T-11) · strict Host allow-list (anti DNS-rebinding) · no CORS · never reachable from LAN/Tailnet · token never logged or in URLs (§17.6)",
+  1058→    "endpoints": [
+  1059→      {
+  1060→        "method": "POST",
+  1061→        "path": "/admin/pairing/open",
+  1062→        "auth": "admin",
+  1063→        "named": "spec",
+  1064→        "note": "opens Pairing Mode → QR (the only intentional secret exposure, §17.4)",
+  1065→        "responses": [
+  1066→          "200 · {pair_id, qr, expires_in}",
+  1067→          "409 · PAIRING_CLOSED paths handled by service"
+  1068→        ]
+  1069→      },
+  1070→      {
+  1071→        "method": "GET",
+  1072→        "path": "/admin/pairing",
+  1073→        "auth": "admin",
+  1074→        "named": "spec",
+  1075→        "note": "pending-device view + SAS for the operator confirm step (§15.4)",
+  1076→        "responses": [
+  1077→          "200 · {state, device_name?, platform?, sas?}"
+  1078→        ]
+  1079→      },
+  1080→      {
+  1081→        "method": "POST",
+  1082→        "path": "/admin/pairing/approve",
+  1083→        "auth": "admin",
+  1084→        "named": "spec",
+  1085→        "note": "operator SAS match → device row + default scopes (§13.1: models:read, chat)",
+  1086→        "responses": [
+  1087→          "200 · {status, device_id}",
+  1088→          "409 · wrong session state"
+  1089→        ]
+  1090→      },
+  1091→      {
+  1092→        "method": "POST",
+  1093→        "path": "/admin/pairing/deny",
+  1094→        "auth": "admin",
+  1095→        "named": "spec",
+  1096→        "note": "reject the claim; secret destroyed per §15.2 DENIED",
+  1097→        "responses": [
+  1098→          "200 · {status: denied}"
+  1099→        ]
+  1100→      },
+  1101→      {
+  1102→        "method": "POST",
+  1103→        "path": "/admin/pairing/close",
+  1104→        "auth": "admin",
+  1105→        "named": "spec",
+  1106→        "note": "OPEN → CLOSED (§15.2); no remote way to re-open (FR-PAIR-01)",
+  1107→        "responses": [
+  1108→          "200 · {status: closed}"
+  1109→        ]
+  1110→      },
+  1111→      {
+  1112→        "method": "GET",
+  1113→        "path": "/admin/devices",
+  1114→        "auth": "admin",
+  1115→        "named": "spec",
+  1116→        "note": "§14.1 device rows, public_key_spki stripped (operator display data only)",
+  1117→        "responses": [
+  1118→          "200 · {devices: […]}"
+  1119→        ]
+  1120→      },
+  1121→      {
+  1122→        "method": "PATCH",
+  1123→        "path": "/admin/devices/{id}",
+  1124→        "auth": "admin",
+  1125→        "named": "spec",
+  1126→        "note": "scopes, name — THE §13.1 grant mechanism for models:manage/tasks; unknown scope → 422; revoked rows editable but auth stays blocked [DESIGN]",
+  1127→        "responses": [
+  1128→          "200 · {status, device}",
+  1129→          "404 · unknown device",
+  1130→          "422 · INVALID_REQUEST envelope"
+  1131→        ]
+  1132→      },
+  1133→      {
+  1134→        "method": "DELETE",
+  1135→        "path": "/admin/devices/{id}",
+  1136→        "auth": "admin",
+  1137→        "named": "spec",
+  1138→        "note": "revoke (§15.6): tokens deleted → revoked_at → scheduler fan-out ≤ 5 s (FR-PAIR-06)",
+  1139→        "responses": [
+  1140→          "200 · {status, device_id, cancelled_requests}",
+  1141→          "404 · unknown/finished"
+  1142→        ]
+  1143→      },
+  1144→      {
+  1145→        "method": "GET",
+  1146→        "path": "/admin/status",
+  1147→        "auth": "admin",
+  1148→        "named": "spec",
+  1149→        "note": "shape [DESIGN], Metadata-only: identity, uptime, pairing state, device counts, backends, queue, pin prefix (12 chars)",
+  1150→        "responses": [
+  1151→          "200 · Metadata block (§17.6-clean)"
+  1152→        ]
+  1153→      },
+  1154→      {
+  1155→        "method": "POST",
+  1156→        "path": "/admin/tls/rotate",
+  1157→        "auth": "admin",
+  1158→        "named": "spec",
+  1159→        "note": "explicit §17.5 rotation; phones must re-pair (PIN_MISMATCH)",
+  1160→        "responses": [
+  1161→          "200 · {spki_pin, note}"
+  1162→        ]
+  1163→      },
+  1164→      {
+  1165→        "method": "GET",
+  1166→        "path": "/admin/doctor",
+  1167→        "auth": "admin",
+  1168→        "named": "spec",
+  1169→        "note": "§18.4 ordered findings as JSON (WP-13)",
+  1170→        "responses": [
+  1171→          "200 · {findings: […]}"
+  1172→        ]
+  1173→      },
+  1174→      {
+  1175→        "method": "GET",
+  1176→        "path": "/admin/metrics",
+  1177→        "auth": "admin",
+  1178→        "named": "design",
+  1179→        "note": "§20.1 optional Prometheus text endpoint — path [DESIGN] (spec names the endpoint type, not a path); 10 verbatim families",
+  1180→        "responses": [
+  1181→          "200 · text/plain; version=0.0.4"
+  1182→        ]
+  1183→      }
+  1184→    ],
+  1185→    "aliases": [
+  1186→      {
+  1187→        "alias": "/admin/pair/open|approve|deny|close",
+  1188→        "primary": "/admin/pairing/*",
+  1189→        "note": "WP-08 [DESIGN] name"
+  1190→      },
+  1191→      {
+  1192→        "alias": "/admin/pair/pending",
+  1193→        "primary": "/admin/pairing",
+  1194→        "note": "WP-08 [DESIGN] name"
+  1195→      },
+  1196→      {
+  1197→        "alias": "POST /admin/devices/{id}/revoke",
+  1198→        "primary": "DELETE /admin/devices/{id}",
+  1199→        "note": "WP-08 [DESIGN] name"
+  1200→      }
+  1201→    ],
+  1202→    "metrics": [
+  1203→      {
+  1204→        "family": "requests_total",
+  1205→        "type": "counter",
+  1206→        "labels": "status,backend",
+  1207→        "source": "push @ chat terminal (ok|error|cancelled; stream + non-stream)"
+  1208→      },
+  1209→      {
+  1210→        "family": "ttft_ms",
+  1211→        "type": "histogram",
+  1212→        "labels": "—",
+  1213→        "source": "push @ mesh.stats (buckets resolve §19.1 200 ms band)"
+  1214→      },
+  1215→      {
+  1216→        "family": "tokens_out_total",
+  1217→        "type": "counter",
+  1218→        "labels": "backend",
+  1219→        "source": "push @ chat terminal"
+  1220→      },
+  1221→      {
+  1222→        "family": "tokens_per_sec",
+  1223→        "type": "gauge",
+  1224→        "labels": "—",
+  1225→        "source": "push @ mesh.stats (last finished stream)"
+  1226→      },
+  1227→      {
+  1228→        "family": "queue_depth",
+  1229→        "type": "gauge",
+  1230→        "labels": "—",
+  1231→        "source": "pull @ scrape (scheduler.queue_stats)"
+  1232→      },
+  1233→      {
+  1234→        "family": "active_generations",
+  1235→        "type": "gauge",
+  1236→        "labels": "—",
+  1237→        "source": "pull @ scrape"
+  1238→      },
+  1239→      {
+  1240→        "family": "backend_up",
+  1241→        "type": "gauge",
+  1242→        "labels": "backend",
+  1243→        "source": "pull @ scrape (registry snapshot)"
+  1244→      },
+  1245→      {
+  1246→        "family": "auth_failures_total",
+  1247→        "type": "counter",
+  1248→        "labels": "—",
+  1249→        "source": "push @ deps.get_principal 401-class"
+  1250→      },
+  1251→      {
+  1252→        "family": "pairing_attempts_total",
+  1253→        "type": "counter",
+  1254→        "labels": "—",
+  1255→        "source": "push @ API-PAIR-01 (any outcome)"
+  1256→      },
+  1257→      {
+  1258→        "family": "cancel_latency_ms",
+  1259→        "type": "histogram",
+  1260→        "labels": "—",
+  1261→        "source": "push @ scheduler finish (cancel request → job done; §13.7 ≤ 1 s band)"
+  1262→      }
+  1263→    ]
+  1264→  }
+  1265→}

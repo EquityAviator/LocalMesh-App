@@ -23,6 +23,7 @@ import {
   MonitorSmartphone,
   Network,
   Radio,
+  Rocket,
   ScanSearch,
   Server,
   ShieldCheck,
@@ -175,6 +176,26 @@ interface StreamLifecycle {
   fixedThisRound: string;
   phases: StreamPhase[];
 }
+interface ReleaseGateRow {
+  gate: string;
+  status: string;
+  note: string;
+}
+interface ReleaseDecision {
+  id: string;
+  title: string;
+  status: string;
+}
+interface ReleaseSection {
+  version: string;
+  pep440: string;
+  specRef: string;
+  scripts: { gate: string; build: string };
+  gateSummary: string;
+  gateRows: ReleaseGateRow[];
+  artifacts: { wheel: string; sdist: string; checksums: string; scan: string };
+  decisions: ReleaseDecision[];
+}
 interface StatusPayload {
   project: string;
   governingSpec: string;
@@ -188,6 +209,7 @@ interface StatusPayload {
   perfBudgets: PerfBudgets;
   streamLifecycle?: StreamLifecycle;
   round?: Round;
+  release?: ReleaseSection;
   meshApi: MeshApiSection;
   adminApi?: AdminApiSection;
   doctor: DoctorSection;
@@ -254,6 +276,15 @@ function GateBadge({ result }: { result: string }) {
     return (
       <Badge variant="outline" className="gap-1 text-muted-foreground">
         <BadgeCheck className="h-3 w-3" /> vacuous pass
+      </Badge>
+    );
+  if (result === "pending")
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-amber-500/40 text-amber-600 dark:text-amber-400"
+      >
+        <Clock className="h-3 w-3" /> pending
       </Badge>
     );
   return (
@@ -1691,6 +1722,145 @@ export default function Home() {
                     </div>
                   </CardContent>
                 </Card>
+              </motion.section>
+            )}
+
+            {/* Release engineering (M9 · §21.6) — gates, artifacts, decisions */}
+            {data.release && (
+              <motion.section
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+                aria-labelledby="rel-h"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2
+                    id="rel-h"
+                    className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    <Rocket className="h-3.5 w-3.5" aria-hidden /> Release
+                    engineering (M9 · §21.6)
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-emerald-500/40 font-mono text-[10px] text-emerald-600 dark:text-emerald-400"
+                    >
+                      v{data.release.version}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 text-[10px] text-muted-foreground"
+                    >
+                      PEP 440 {data.release.pep440}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+                  {/* 9 RELEASE.md gates */}
+                  <Card className="transition-shadow hover:shadow-md lg:col-span-3">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span>The 9 release gates (docs/RELEASE.md)</span>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-[10px] text-muted-foreground"
+                        >
+                          {data.release.gateSummary}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription className="font-mono text-[10px]">
+                        {data.release.scripts.gate} · {data.release.scripts.build}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="divide-y divide-border">
+                        {data.release.gateRows.map((g) => (
+                          <div
+                            key={g.gate}
+                            className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-foreground">
+                                {g.gate}
+                              </p>
+                              <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+                                {g.note}
+                              </p>
+                            </div>
+                            <GateBadge result={g.status} />
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Artifacts + decision register */}
+                  <div className="flex flex-col gap-3 lg:col-span-2">
+                    <Card className="transition-shadow hover:shadow-md">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">
+                          Built artifacts (sandbox run)
+                        </CardTitle>
+                        <CardDescription className="text-[10px]">
+                          TC-SEC-07 scans the exact bytes that get signed
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-1.5">
+                        <p className="break-all font-mono text-[10px] text-muted-foreground">
+                          <span className="text-foreground">
+                            {data.release.artifacts.wheel}
+                          </span>
+                        </p>
+                        <p className="break-all font-mono text-[10px] text-muted-foreground">
+                          {data.release.artifacts.sdist}
+                        </p>
+                        <p className="font-mono text-[10px] text-muted-foreground">
+                          {data.release.artifacts.checksums}
+                        </p>
+                        <p className="border-t border-dashed border-border pt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                          {data.release.artifacts.scan}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="transition-shadow hover:shadow-md">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">M9 decision register</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border">
+                          {data.release.decisions.map((dc) => (
+                            <div
+                              key={dc.id}
+                              className="flex items-start justify-between gap-3 px-4 py-2.5"
+                            >
+                              <div className="min-w-0">
+                                <p className="font-mono text-[10px] font-semibold text-foreground">
+                                  {dc.id}
+                                </p>
+                                <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+                                  {dc.title}
+                                </p>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={`shrink-0 text-[10px] ${
+                                  dc.status === "accepted"
+                                    ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                                    : dc.status === "pending"
+                                      ? "border-amber-500/40 text-amber-600 dark:text-amber-400"
+                                      : "text-muted-foreground"
+                                }`}
+                              >
+                                {dc.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
               </motion.section>
             )}
 

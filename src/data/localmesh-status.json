@@ -42,26 +42,26 @@
     {
       "id": "M6",
       "name": "Control Plane (optional)",
-      "status": "planned",
-      "detail": "Owner decision Q-05 pending"
+      "status": "done",
+      "detail": "COMPLETE (agent side): ADR-019 activation (Q-05 closed in-session), control-plane/ schema 0001_init.sql (§12.2 verbatim + RLS) + TC-SEC-08 Content-column scan, SupabaseControlPlaneClient (PostgREST + Edge-Function shapes, QUESTION-107), ControlPlaneService state machine + 60s heartbeat + revocation mirror, admin register/status endpoints. Residual: Supabase deployment + real call-shape verification (owner)"
     },
     {
       "id": "M7",
       "name": "Multimodal & Tasks",
-      "status": "planned",
-      "detail": "Vision, Whisper adapter, doc upload + RAG, durable Tasks"
+      "status": "done",
+      "detail": "COMPLETE (agent side): vision parts (§13.6) gated on 'vision' capability, Whisper adapter (FR-MM-02, fake_whisper), local RAG (chunking + embeddings + cosine top-k, doc_qa), durable Tasks API (§13.9) with AES-256-GCM at-rest input AND result + 1h retention sweeper + SSE task events. Residual: real Whisper fixtures, Android attachment UI (owner)"
     },
     {
       "id": "M8",
       "name": "Routing & agent runtime",
-      "status": "planned",
-      "detail": "auto routing, hardware-aware scoring, classifier (flag)"
+      "status": "done",
+      "detail": "COMPLETE (agent side): §16.6 model:auto rule engine (verbatim scoring 0.40/0.25/0.20/0.15 × fit) + mesh.meta.routing explainability (top-5 breakdown), classifier hook off-by-default (S-21), tool calling via ADR-020 default-deny sandbox (bounded loop ≤5, 4KB output cap, audit without args). Residual: real-backend tool-calling contract tests (fixtures)"
     },
     {
       "id": "M9",
       "name": "Hardening & release",
-      "status": "planned",
-      "detail": "Pen-test checklist, pin rotation, installers, signed releases"
+      "status": "done",
+      "detail": "COMPLETE (agent side): release_gate.sh (9 RELEASE.md gates + --release pentest enforcement), release_build.sh (wheel+sdist+SHA256SUMS+TC-SEC-07 artifact scan), SEC-N6 dev-default gate, CI tag pipeline (release-gate job), v1.0.0-rc.1, CHANGELOG.md, ADR-021 (Go/Rust gate closed). Residual: pentest sign-off + Q-08/Q-09 + final tag (owner)"
     }
   ],
   "workPackages": [
@@ -287,6 +287,61 @@
       "commit": null,
       "blockedBy": "Android/Gradle build env (sandbox)",
       "notes": "Android build environment required — blocked in sandbox"
+    },
+    {
+      "id": "WP-17",
+      "title": "Control Plane (§12, FR-CP-01..04, ADR-019)",
+      "milestone": "M6",
+      "status": "done",
+      "reqs": [
+        "FR-CP-01",
+        "FR-CP-02",
+        "FR-CP-03",
+        "FR-CP-04"
+      ],
+      "commit": "ff21f12",
+      "notes": "Supabase client + state machine + revocation mirror + TC-SEC-08; QUESTION-107 opened for call shapes"
+    },
+    {
+      "id": "WP-18",
+      "title": "Multimodal & Tasks (§13.6/§13.9, FR-MM-01..04)",
+      "milestone": "M7",
+      "status": "done",
+      "reqs": [
+        "FR-MM-01",
+        "FR-MM-02",
+        "FR-MM-03",
+        "FR-MM-04"
+      ],
+      "commit": "1c9066a",
+      "notes": "vision parts + Whisper adapter + local RAG + encrypted durable Tasks; 0002_tasks migration"
+    },
+    {
+      "id": "WP-19",
+      "title": "Routing & agent runtime (§16.6, FR-RTE, FR-AGENT-RT)",
+      "milestone": "M8",
+      "status": "done",
+      "reqs": [
+        "FR-RTE-01",
+        "FR-RTE-02",
+        "FR-RTE-03",
+        "FR-AGENT-RT"
+      ],
+      "commit": "3c99be7",
+      "notes": "auto rule engine + mesh.meta.routing + ADR-020 tool sandbox"
+    },
+    {
+      "id": "WP-20",
+      "title": "Hardening & release (§21.4/§21.6, §17.13)",
+      "milestone": "M9",
+      "status": "done",
+      "reqs": [
+        "SEC-N6",
+        "TC-SEC-07",
+        "NFR-COMP-02"
+      ],
+      "commit": "M9",
+      "notes": "release gate/build scripts, CI tag pipeline, v1.0.0-rc.1, ADR-021; signing + pentest sign-off are owner steps"
     }
   ],
   "gates": [
@@ -445,6 +500,31 @@
       "result": "pass",
       "detail": "no known vulnerabilities",
       "ref": "§17.11"
+    },
+    {
+      "name": "Release gate script — full §21.4 chain (scripts/release_gate.sh)",
+      "result": "pass",
+      "ref": "M9 · §21.4/§21.6"
+    },
+    {
+      "name": "TC-SEC-07 artifact scan over built wheel/sdist",
+      "result": "pass",
+      "ref": "M9 · §17.13"
+    },
+    {
+      "name": "SEC-N6 dev-default check (dev-mode unreachable)",
+      "result": "pass",
+      "ref": "M9 · §17.9"
+    },
+    {
+      "name": "Wheel + sdist + SHA256SUMS build (release_build.sh)",
+      "result": "pass",
+      "ref": "M9 · §21.6"
+    },
+    {
+      "name": "Manual pen-test sign-off (pentest-signoff.md)",
+      "result": "pending",
+      "ref": "M9 · §17.13 manual"
     }
   ],
   "securityTests": [
@@ -492,15 +572,15 @@
     },
     {
       "id": "TC-SEC-07",
-      "title": "Release manifest scan",
-      "status": "vacuous",
-      "where": "activates when Android project exists"
+      "title": "Release manifest + BUILT-artifact scan (wheel/sdist)",
+      "status": "delivered",
+      "where": "test_tc_sec_07_release_manifest.py · scripts/security/scan_artifacts.py (release_build.sh)"
     },
     {
       "id": "TC-SEC-08",
-      "title": "Content-column schema scan (Control Plane)",
-      "status": "pending",
-      "where": "needs Control Plane (M6)"
+      "title": "Content-column schema scan (Control Plane, M6)",
+      "status": "delivered",
+      "where": "test_tc_sec_08_cp_schema.py · control-plane/scripts/schema_content_scan.py"
     },
     {
       "id": "TC-SEC-10",
@@ -569,14 +649,20 @@
       "id": "Q-08",
       "title": "Project license (permissive vs copyleft)",
       "status": "OPEN",
-      "impact": "zeroconf 0.151.5 is LGPL-2.1-or-later — flagged under CON-03"
+      "impact": "M9 decision brief recorded (docs/RELEASE.md): zeroconf LGPL-2.1-or-later is the only non-permissive dep (CON-03); recommendation Apache-2.0 — owner legal review required; blocks 1.0.0 final, not rc.1"
+    },
+    {
+      "id": "QUESTION-108",
+      "title": "Q-08/Q-09 owner decisions surfaced by the M9 release gate",
+      "status": "OPEN",
+      "impact": "Tagging 1.0.0 final requires Q-08 (license); decision brief + recommendation in docs/RELEASE.md § M9 decision register; pyproject intentionally ships without a license field"
     }
   ],
   "nextSteps": [
-    "Agent-side M2–M5 surface + admin API + §20.1 metrics are complete; remaining WP (09/10/11-App/12/13-App) need the Android/Gradle build environment (mesh-core Kotlin, NSD discovery, SM-CONN, Diagnostics screen)",
-    "Owner actions unchanged: fixtures capture (LM Studio/Ollama/tailscale — hard gate on contract tests), ADR-017/018 approvals, QUESTION-101/102/104/105/106 (QUESTION-103 item 4 resolved this round)",
-    "Sandbox-capable leftovers: full-src mypy --strict scope decision (26 non-CI-scope findings — owner call); CI-19/20 are client-side and land with Android work; §19.1 Agent-added numbers need real backends",
-    "Real-LAN validation of mDNS advertisement, doctor LAN probes (CI-06/07), tailscale probe, and Prometheus scraping on owner hardware (sandbox has no tailscale binary; multicast unverified)"
+    "M0–M9 are COMPLETE on the agent/sandbox side (M9 exit: automated release gate PASS — 14/14 steps, 519 tests). Remaining items are owner-environment actions, not dev work.",
+    "Owner release path: (1) run the manual pen-test checklist on real hardware + commit docs/security/pentest-signoff.md, (2) tag v1.0.0-rc.1 → CI release-gate builds+scans artifacts, (3) minisign SHA256SUMS (key outside repo) and publish.",
+    "Owner decisions due: Q-08 license + Q-09 distribution (docs/RELEASE.md § M9 decision register, QUESTION-108), ADR-017 (setuptools) + ADR-018 (nvidia-ml-py) approvals, QUESTION-101..107 as listed.",
+    "Environment-gated validation: fixtures capture (LM Studio/Ollama/Whisper/tailscale — flips contract tests to hard gates), real-GPU NvmlGpuProbe, real-LAN mDNS/doctor probes, Supabase deployment (QUESTION-107 call shapes), Android WPs 09/10/11-App/12/13."
   ],
   "streamLifecycle": {
     "specRef": "§13.7 SSE wire format · §10.3 rule 4 timeout budgets · CI-18/CI-21",
@@ -695,9 +781,9 @@
     ]
   },
   "round": {
-    "label": "Round 10",
-    "delivered": "Admin API conformance pass (§13.1): spec-named routes primary (pairing/*, GET /admin/pairing, PATCH+DELETE /admin/devices/{id}, GET /admin/status) with WP-08 names as aliases, PATCH = the operator scope-grant mechanism; §20.1 metrics registry (10 families) + GET /admin/metrics Prometheus scrape (loopback admin only); QUESTION-103 item 4 RESOLVED; real-process smoke verified",
-    "next": "owner-driven fixtures/Android work; sandbox candidates: none blocking"
+    "label": "Round 11",
+    "delivered": "M9 Hardening & release (agent side): one-command release gate (release_gate.sh — all 9 RELEASE.md gates, --release enforces the manual pentest sign-off), build pipeline (release_build.sh — wheel+sdist+SHA256SUMS+TC-SEC-07 artifact scan over the exact signed bytes), SEC-N6 dev-default gate, CI release-gate job on tags, v1.0.0-rc.1 version discipline tests, CHANGELOG.md, ADR-021 (Go/Rust gate closed). QA also caught + fixed: hmac NameError in manual pairing (FR-PAIR-07), spake2 None-narrowing, lint/format drift from the final M8 commit",
+    "next": "Owner: pentest sign-off → tag v1.0.0-rc.1 → sign SHA256SUMS; Q-08/Q-09 decisions (RELEASE.md register); ADR-017/018 approvals; fixtures capture; Android WPs (09/10/11-App/12/13)"
   },
   "meshApi": {
     "basePath": "/mesh/v1",
@@ -1259,6 +1345,91 @@
         "type": "histogram",
         "labels": "—",
         "source": "push @ scheduler finish (cancel request → job done; §13.7 ≤ 1 s band)"
+      }
+    ]
+  },
+  "release": {
+    "version": "1.0.0-rc.1",
+    "pep440": "1.0.0rc1",
+    "specRef": "§21.6 · §22.1 M9",
+    "scripts": {
+      "gate": "bash scripts/release_gate.sh [--release]",
+      "build": "bash scripts/release_build.sh"
+    },
+    "gateSummary": "automated 14/14 PASS · manual sign-off pending (owner)",
+    "gateRows": [
+      {
+        "gate": "1 · unit layer",
+        "status": "pass",
+        "note": "345 tests"
+      },
+      {
+        "gate": "2 · contract layer",
+        "status": "skip",
+        "note": "3 announced skips — real-Backend fixtures pending (owner)"
+      },
+      {
+        "gate": "3 · integration layer",
+        "status": "pass",
+        "note": "141 tests incl. fake backends"
+      },
+      {
+        "gate": "4 · security layer (§17.13)",
+        "status": "pass",
+        "note": "33 tests — TC-SEC-01/03/04/05/06/07/08/09/10 + FR-PAIR-07 vectors"
+      },
+      {
+        "gate": "5 · import-linter (§10.1)",
+        "status": "pass",
+        "note": "3/3 contracts KEPT"
+      },
+      {
+        "gate": "6 · mypy --strict (§21.2)",
+        "status": "pass",
+        "note": "core + security, 23 files"
+      },
+      {
+        "gate": "7 · ruff check + format",
+        "status": "pass",
+        "note": "agent/tools/scripts"
+      },
+      {
+        "gate": "8 · OpenAPI drift (§21.3)",
+        "status": "pass",
+        "note": "committed spec == generated"
+      },
+      {
+        "gate": "9 · pentest checklist (manual)",
+        "status": "pending",
+        "note": "sign-off template committed — operator executes on real hardware"
+      }
+    ],
+    "artifacts": {
+      "wheel": "localmesh_agent-1.0.0rc1-py3-none-any.whl",
+      "sdist": "localmesh_agent-1.0.0rc1.tar.gz",
+      "checksums": "agent/dist/SHA256SUMS (sha256)",
+      "scan": "TC-SEC-07 artifact scan OK (214 files across wheel+sdist)"
+    },
+    "decisions": [
+      {
+        "id": "ADR-021",
+        "title": "Go/Rust single-binary rewrite: gate closed — Python kept for v1.0",
+        "status": "accepted"
+      },
+      {
+        "id": "Q-08",
+        "title": "Project license — recommendation Apache-2.0 + zeroconf notices; owner legal review",
+        "status": "open"
+      },
+      {
+        "id": "Q-09",
+        "title": "Distribution — sideload/F-Droid for v1.0 (spec default); Play Store stays open",
+        "status": "open"
+      },
+      {
+        "id": "SIGNOFF",
+        "title": "Pen-test sign-off (docs/security/pentest-signoff.md template) — operator-only",
+        "status": "pending"
       }
     ]
   }
