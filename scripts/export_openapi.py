@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO_ROOT / "agent" / "src"))
 
 from fastapi import FastAPI  # noqa: E402
 
-from localmesh_agent.api.v1 import auth, chat, health, info, pair, models, requests  # noqa: E402
+from localmesh_agent.api.v1 import auth, chat, health, info, models, pair, requests  # noqa: E402
 
 # §13.1: every Mesh API response carries `X-Mesh-Api-Version: 1`.
 MESH_API_VERSION = "1"
