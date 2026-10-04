@@ -456,3 +456,34 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：修 228 �
 4. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale，硬门）、真实 LAN/GPU/Android 环境验证（mDNS 多播、NvmlGpuProbe 真实 GPU、§19.1 Agent-added 数字、WP-09/10/12/13 App 侧）。
 5. WP-16+ 按 §22.2 "M6–M9 packages are defined when each milestone starts" 等 owner 重规划。
 6. 沙箱注：HEAD 会间会被切回 main，本轮提交直接落 main；`agent/.venv` 已同步。
+
+---
+Task ID: 18 — webDevReview round 9 (3 spec-conformance bug fixes + TC-SEC-05 fuzz harness + dashboard stream-lifecycle panel)
+Agent: Z.ai Code (main agent)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：修复 3 个规格符合性 bug + TC-SEC-05 模糊测试 + 仪表盘新面板）。
+
+项目状态判断:
+- QA round 9 基线全绿：pytest 301 passed + 3 announced skips、agent-browser 桌面 1280 + 移动 390（无横向溢出）、console 零错误、dev.log 全 200、交互（过滤 chips）复验正常。项目处于 Agent 侧 M2–M5 完结后的加固期。
+- 代码审查（CI-17..20 候选清单驱动）发现 **3 个真实规格符合性 bug**（详见下），全部修复。
+
+本轮完成 (agent: 99610ef, dashboard: 7088cee, 均落 main):
+1. **流鲁棒性 bug 簇修复（CI-18/CI-21, §13.7, §10.3 rule 4, NFR-REL-02）**：
+   - `api/v1/chat.py`：首 token 等待改为与 `: ping`（每 15 s）竞速（§13.7 "pings until first token" + CI-21 mitigation "Pings"）。**原代码 `asyncio.wait_for(upstream.__anext__(), timeout=30.0)` 是三重违规**：(a) 30 s ≠ 规格的 120 s 冷加载预算；(b) TimeoutError 未捕获 → 生成器裸崩 → 流无 terminal `mesh.error` 即死（NFR-REL-02 违规）；(c) 冷加载期间零 ping → 手机 45 s idle 检测（CI-18）误杀活流。finally 中补 pending task 取消，防泄漏。
+   - `adapters/backends/openai_compat.py`：`_consume` 首个已解析 chunk 前的静默缺口用 `first_token_timeout_s`（120 s），之后才用 60 s idle 预算（原 60 s 一刀切会杀掉 60–120 s 的静默冷加载，先于 API 层触发）；idle 超时参数化以便测试。
+   - `app.py build_adapters`：**Appendix E 的 `first_token_timeout_seconds`/`max_stream_seconds` 是死配置**——存在但从未传入适配器；现已接线（§10.3 rule 4 "configurable" 落实）。
+2. **TC-SEC-05 unauth fuzz harness（§17.13 L5）**：`tests/security/test_tc_sec_05_fuzz.py`——确定性固定语料（无随机）。公开路由从**应用自身 OpenAPI schema** 枚举（FastAPI 惰性 `_IncludedRouter` 隐藏 APIRoute，app.routes 枚举为空——改为 openapi() 权威面）：12 条公开路由 × 4 种 auth 变体 × 7 种 body 变体 + admin listener（伪造 Host → 403、缺/错 X-Admin-Token → 401，fail-closed stub 证明 handler 永不可达）。断言：永不 5xx、§13.4 envelope 键集精确、攻击者输入零反射、无 Traceback、X-Mesh-Request-Id 恒在；路由集 containment 钉死防新端点漏网。
+3. **OpenAPI 脚本解释器修复（QA 中抓到的假阳性）**：`python3 scripts/check_openapi_drift.py`（系统 pydantic 2.12.5）与 lockfile venv（2.13.5）生成的 ValidationError schema 不同 → drift 假失败。仿 round-7 pytest_layer.sh 模式：两脚本在 `agent/.venv` 存在时 re-exec（CI 无该 venv 不受影响）。**两个实现教训**：venv python 是 base 解释器的符号链接 → 比较解析路径恒等 → 必须用 `sys.prefix != venv_dir` 判定；shim 用 `__file__` 会把 checker re-exec 成 exporter（shim 活在 export 模块里）→ 必须用 `sys.argv[0]`。
+4. **测试 +11**：unit 5（首 token 缺口 > idle 预算存活 / 首 chunk 后缺口用 idle 预算超时 / 全静默在 first_token 预算处 BACKEND_TIMEOUT(504, retryable) / §10.3 rule 4 默认值钉住 / build_adapters 接线 77s/321s 端到端）+ integration 3（真实 app + fake 2.5 s 冷加载 + 预算 1 s + PING_INTERVAL_S 收缩：≥3 ping + terminal mesh.error BACKEND_TIMEOUT + 无 [DONE]；快流零杂散 ping（保生产 15 s 间隔防竞速不稳）；冷加载在预算内（4 s）→ ping 保活且正常完成）+ security 3（fuzz 全电池 / 路由集 containment / admin listener 全矩阵）。
+5. **仪表盘 round-9（7088cee）**：新面板 "SSE stream lifecycle (§13.7 · §10.3 rule 4)"——6 阶段线框契约时间线（queued → mesh.meta → cold load → deltas → stats → terminal error），色环节点（琥珀=等待/翠绿=正常/红=终态）、mono emit chips、每阶段预算行、琥珀 "fixed this round" 条说明 30 s abort 修复、页脚引用新测试文件；CI gate 面板 +2 行（SSE stream robustness、TC-SEC-05）、pytest 行更新 315 collected；TC-SEC-05 → delivered（7/10）；/chat/completions API 行补冷加载 ping + BACKEND_TIMEOUT 响应行；nextSteps 重写；round 9 数据。
+6. agent-browser 复验：新面板桌面 1280 渲染正常（分色节点/chips/what-changed 条全部到位）、移动 390 无横向溢出（sw=390，chips 正确换行）、console 零错误。
+
+验证结果:
+- main = 7088cee（agent 99610ef + dashboard 7088cee）。gate 全绿：ruff check/format PASS（94 files）、mypy --strict PASS（CI scope 15 files）、pytest **312 passed + 3 announced skips、0 warnings**、四层 pytest_layer（CI 式 repo-root 调用，须带层目录参数）233 unit / 3 announced skips / 65 integration / 14 security 全绿、fake backends 31/31、import-linter 3/3 KEPT、OpenAPI drift OK（12 paths，双解释器验证）、3 security scans PASS、bun lint clean、agent-browser 桌面+移动复验通过（console 零错误、390px 无横向溢出）。
+
+未解决问题/风险，下一阶段建议:
+1. **剩余沙箱可做候选**：全 src mypy --strict 范围决策（2.4.0 在 CI 范围外报 26 处——owner call，未动）；CI-19/20 属客户端条目（SM-CONN re-plan / app 后台），随 Android 工作包落地；§19.1 数字需真实 Backends。
+2. **pytest_layer.sh 调用姿势**：repo root 调用且**必须带层目录参数**（`bash scripts/pytest_layer.sh agent/tests/unit` 等，CI 四步原样）——裸调用只会打印 "no test directories" 通知（本轮实测踩坑后核对 ci.yml）。
+3. QUESTION-105/106、QUESTION-103 wire-format items 1-2 + operator 路由命名、QUESTION-104 等 tailscale 采集；ADR-017/018 待 owner 审批——全部不变。
+4. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale，硬门）、真实 LAN/GPU/Android 环境验证、WP-16+ 等 owner 重规划（§22.2）。
+5. 冷加载长流（120 s 预算 + 15 s ping）的**真实 LM Studio/Ollama 行为**待 fixtures/实机验证——fake 的冷加载是 sleep-before-headers，真实后端可能先发头再静默（两条超时路径已分别覆盖：send 阶段 httpx read 预算 + _consume 首解析 chunk 缺口）。
+6. 沙箱注：HEAD 会间会被切回 main，本轮提交直接落 main；`agent/.venv` 未变（无新依赖）。
