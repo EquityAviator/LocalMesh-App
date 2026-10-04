@@ -72,6 +72,27 @@ interface OpenQuestion {
   status: string;
   impact: string;
 }
+interface DoctorLadderRow {
+  level: string;
+  requirement: string;
+  failure: string;
+  coverage: "agent" | "shared" | "app";
+}
+interface DoctorCheck {
+  order: number;
+  id: string;
+  title: string;
+  ciIds: string[];
+  where: string;
+}
+interface DoctorSection {
+  cli: string;
+  adminEndpoint: string;
+  commit: string;
+  exitCodes: string;
+  ladder: DoctorLadderRow[];
+  checks: DoctorCheck[];
+}
 interface StatusPayload {
   project: string;
   governingSpec: string;
@@ -82,6 +103,7 @@ interface StatusPayload {
   securityTests: SecurityTest[];
   openQuestions: OpenQuestion[];
   nextSteps: string[];
+  doctor: DoctorSection;
   live: {
     git: { hash: string; subject: string; date: string };
     stats: {
@@ -198,6 +220,7 @@ export default function Home() {
   const [wpFilter, setWpFilter] = useState<WpFilter>("all");
   const [expandedWp, setExpandedWp] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedDoctor, setCopiedDoctor] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/localmesh/status")
@@ -734,16 +757,211 @@ export default function Home() {
                 <div className="mt-3 flex items-start gap-2 rounded-lg border border-dashed border-border p-3 text-[11px] leading-relaxed text-muted-foreground">
                   <Stethoscope className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
-                    Next sandbox increment:{" "}
-                    <span className="font-medium text-foreground">
-                      Doctor v1
-                    </span>{" "}
-                    — the §18.1 connection-ladder self-check, findings keyed by
-                    CI-ID.
+                    Delivered this round:{" "}
+                    <span className="font-medium text-foreground">Doctor v1</span> —
+                    the §18.4 ladder with CI-keyed findings; next increment:{" "}
+                    <span className="font-medium text-foreground">WP-14</span> Tailscale
+                    probe adapter (M4).
                   </span>
                 </div>
               </motion.section>
             </div>
+
+            {/* Connection ladder & doctor (§18.1 · §18.4, WP-13 agent side) */}
+            <motion.section
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.28 }}
+              aria-labelledby="doctor-h"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h2
+                  id="doctor-h"
+                  className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  <Stethoscope className="h-3.5 w-3.5" aria-hidden /> Connection
+                  ladder &amp; doctor (§18.1 · §18.4)
+                </h2>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  WP-13 agent side · {data.doctor.checks.length} ordered checks
+                </span>
+              </div>
+              <div className="grid gap-6 lg:grid-cols-5">
+                {/* §18.1 ladder — walked top-down */}
+                <Card className="transition-shadow hover:shadow-md lg:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">The ladder (§18.1)</CardTitle>
+                    <CardDescription className="text-xs">
+                      Every layer must hold; the doctor walks it top-down.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <ScrollArea className="h-[26rem]">
+                      <ol className="relative px-4 pb-4">
+                        <span
+                          aria-hidden
+                          className="absolute top-2 bottom-4 left-[2.4rem] w-px bg-gradient-to-b from-emerald-500/50 via-amber-500/30 to-transparent"
+                        />
+                        {data.doctor.ladder.map((row, i) => {
+                          const coverageStyle =
+                            row.coverage === "agent"
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : row.coverage === "shared"
+                                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : "border-border bg-muted text-muted-foreground";
+                          return (
+                            <li key={row.level} className="relative flex gap-3 py-1.5">
+                              <span
+                                className={`z-10 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border font-mono text-[10px] font-semibold tabular-nums ${coverageStyle}`}
+                              >
+                                {row.level.replace("L", "")}
+                              </span>
+                              <div className="min-w-0 flex-1 rounded-md px-2 py-1 transition-colors hover:bg-muted/40">
+                                <p className="text-xs font-medium text-foreground">
+                                  {row.requirement}
+                                </p>
+                                <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+                                  {row.failure}
+                                </p>
+                              </div>
+                              <span
+                                className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                                  row.coverage === "agent"
+                                    ? "bg-emerald-500 motion-safe:animate-pulse"
+                                    : row.coverage === "shared"
+                                      ? "bg-amber-500"
+                                      : "bg-muted-foreground/30"
+                                }`}
+                                aria-hidden
+                              />
+                              <span className="sr-only">
+                                {row.level} coverage: {row.coverage}
+                              </span>
+                              {i === 0 && <span className="sr-only">ladder top</span>}
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </ScrollArea>
+                  </CardContent>
+                  <CardContent className="flex flex-wrap gap-2 border-t px-4 py-2.5 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> agent
+                      check delivered
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> shared
+                      machinery
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />{" "}
+                      app side (Android WPs)
+                    </span>
+                  </CardContent>
+                </Card>
+
+                {/* §18.4 doctor checks */}
+                <Card className="transition-shadow hover:shadow-md lg:col-span-3">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">
+                      Doctor checks (§18.4, in order)
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Findings keyed by CI-ID with fixes; no secrets, no Content
+                      (§17.6/§17.10).
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="mx-4 mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                      <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">
+                        {data.doctor.cli}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-1 px-2 text-[10px]"
+                        onClick={() => {
+                          navigator.clipboard
+                            ?.writeText(data.doctor.cli)
+                            .then(() => {
+                              setCopiedDoctor(true);
+                              setTimeout(() => setCopiedDoctor(false), 1600);
+                            })
+                            .catch(() => {});
+                        }}
+                        aria-label="Copy doctor CLI command"
+                      >
+                        {copiedDoctor ? (
+                          <Check className="h-3 w-3 text-emerald-500" aria-hidden />
+                        ) : (
+                          <Copy className="h-3 w-3" aria-hidden />
+                        )}
+                        {copiedDoctor ? "copied" : "copy"}
+                      </Button>
+                      <Separator orientation="vertical" className="hidden h-4 sm:block" />
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[9px] text-muted-foreground"
+                      >
+                        {data.doctor.adminEndpoint}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[9px] text-muted-foreground"
+                        title="Level-mapped exit codes [DESIGN]"
+                      >
+                        exit {data.doctor.exitCodes}
+                      </Badge>
+                    </div>
+                    <ScrollArea className="h-[22rem]">
+                      <div className="divide-y divide-border">
+                        {data.doctor.checks.map((c) => (
+                          <div
+                            key={c.id}
+                            className="group flex items-center gap-3 px-4 py-2 transition-colors hover:bg-muted/40"
+                            title={c.where}
+                          >
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10 font-mono text-[10px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                              {c.order}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-foreground">
+                                <span className="font-mono font-medium">{c.id}</span>{" "}
+                                <span className="text-muted-foreground">{c.title}</span>
+                              </p>
+                              <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100">
+                                {c.where}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                              {c.ciIds.length === 0 ? (
+                                <span className="font-mono text-[9px] text-muted-foreground/50">
+                                  —
+                                </span>
+                              ) : (
+                                c.ciIds.map((ci) => (
+                                  <Badge
+                                    key={ci}
+                                    variant="outline"
+                                    className="border-emerald-500/30 bg-emerald-500/5 px-1.5 py-0 font-mono text-[9px] text-emerald-700 dark:text-emerald-300"
+                                  >
+                                    {ci}
+                                  </Badge>
+                                ))
+                              )}
+                              <CheckCircle2
+                                className="h-3.5 w-3.5 text-emerald-500"
+                                aria-label="delivered"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </div>
+            </motion.section>
 
             {/* Open questions */}
             <motion.section

@@ -6,7 +6,7 @@
     { "id": "M0", "name": "Foundations", "status": "done", "detail": "Repo, CI, fake backends, dependency spike, OpenAPI skeleton, governance docs" },
     { "id": "M1", "name": "Agent core (loopback)", "status": "done", "detail": "Config, store, adapters, registry, scheduler, chat SSE, cancel, /health, CLI run — dev-insecure loopback only" },
     { "id": "M2", "name": "Secure LAN MVP", "status": "in-progress", "detail": "Agent side done (WP-07 TLS identity + WP-08 pairing/auth/tokens/admin, TLS 1.3 serving, 12/12 E2E smoke); remaining: WP-09 mesh-core Kotlin + WP-10 App (Android build env required)" },
-    { "id": "M3", "name": "Discovery & connection manager", "status": "in-progress", "detail": "Agent-side mDNS advertise DONE (WP-11, §16.2); remaining: App NSD + SM-CONN (Android), Doctor v1 (agent-side, sandbox-implementable)" },
+    { "id": "M3", "name": "Discovery & connection manager", "status": "in-progress", "detail": "Agent side DONE: mDNS advertise (WP-11, §16.2) + Doctor v1 (WP-13 agent CLI, §18.4 ladder, 10 ordered checks, GET /admin/doctor); remaining: App NSD + SM-CONN + Diagnostics screen (Android build env required)" },
     { "id": "M4", "name": "Remote (Tailnet)", "status": "planned", "detail": "Tailnet probe, T2 candidates, racing/failover, guidance cards" },
     { "id": "M5", "name": "Multi-backend, metrics", "status": "planned", "detail": "Hardware probe, /device, load/unload, keep-warm, concurrency settings" },
     { "id": "M6", "name": "Control Plane (optional)", "status": "planned", "detail": "Owner decision Q-05 pending" },
@@ -24,6 +24,7 @@
     { "id": "WP-07", "title": "TLS identity — P-256 self-signed cert, SPKI pin (b64url no-pad), renew/rotate", "milestone": "M2", "status": "done", "reqs": ["ADR-006", "§17.3", "§17.5", "§17.6", "§10.6"], "commit": "af2d0dc", "notes": "Renew keeps pin ⇒ no re-pair; corrupt/half files refuse startup (§10.7); key.pem 0600" },
     { "id": "WP-08", "title": "Pairing SM-PAIR + auth challenges + opaque Device Tokens + revoke + admin listener + QR + TLS 1.3 serving", "milestone": "M2", "status": "done", "reqs": ["FR-PAIR-01/02/04/06", "§13.2", "§15.2/15.4/15.6", "§17.3-17.7", "ADR-008", "ADR-014"], "commit": "d74f25f", "notes": "5-bad-proofs LOCKED, TTL 300 s + tombstone 410, revoke kills streams ≤ 5 s (TC-SEC-04), admin Host check (TC-SEC-06)" },
     { "id": "WP-11", "title": "mDNS advertise (Agent side) — _localmesh._tcp, §16.2 TXT, interface selection", "milestone": "M3", "status": "done", "reqs": ["FR-AGT-04", "FR-CONN-05", "§16.2", "§10.6 step 5", "CI-24"], "commit": "5d6812b", "notes": "Agent side only. TXT v/aid/n/fp(16-char pin hint)/api/po mirrors pairing_open; CI-24 virtual-adapter exclusion; default-route selection; §16.2 re-announce watchdog [DESIGN 60 s]; QR ep now leads with resolved LAN IPv4 (QUESTION-103 item 5). App NSD + permissions stay with the Android work packages" },
+    { "id": "WP-13 (Agent CLI)", "title": "Doctor v1 — §18.4 connection ladder, CI-keyed findings, GET /admin/doctor, --rotate-tls", "milestone": "M3", "status": "done", "reqs": ["FR-CONN-06", "§18.1-18.4", "§17.5", "§13.1"], "commit": "8e86f56", "notes": "Agent side only. 10 ordered checks per §18.4; findings {check, level, ci_ids, summary, fix} golden-tested per CI; no-secrets asserted (pin prefix only, §10.6); probes degrade to unknown info — works with Agent stopped; admin endpoint spec-named, X-Admin-Token auth; App Diagnostics screen stays with the Android work packages" },
     { "id": "WP-09", "title": "mesh-core Kotlin: Keystore, pinned HTTP/SSE", "milestone": "M2", "status": "planned", "reqs": ["FR-PAIR-03/05", "SEC-N1"], "commit": null },
     { "id": "WP-10", "title": "App: pairing flow, agents/models/chat, DB, export", "milestone": "M2", "status": "planned", "reqs": ["FR-MOD-03", "FR-CHAT-03/06/07"], "commit": null },
     { "id": "WP-11/12 (App)", "title": "NSD discovery + SM-CONN + permissions (App side)", "milestone": "M3", "status": "planned", "reqs": ["FR-CONN-05/07", "§15.1", "§16.1", "§6.4"], "commit": null, "notes": "Android build environment required — blocked in sandbox" }
@@ -31,7 +32,9 @@
   "gates": [
     { "name": "ruff check + format", "result": "pass", "ref": "§21.2" },
     { "name": "mypy --strict (core/ + security/)", "result": "pass", "ref": "§21.2" },
-    { "name": "pytest unit + integration + security", "result": "pass", "detail": "183 collected — 181 passed + 2 announced skips (incl. 19 mDNS units + 7 formal §17.13 entries)", "ref": "§21.5" },
+    { "name": "pytest unit + integration + security", "result": "pass", "detail": "212 collected — 210 passed + 2 announced skips (incl. 28 Doctor units + admin doctor endpoint + 7 formal §17.13 entries)", "ref": "§21.5" },
+    { "name": "Doctor ladder (§18.4)", "result": "pass", "detail": "10 ordered checks, golden outputs per CI (CI-03/04/05/06/07/12/15/23/24), ladder-order test, no-secrets assertions, level-mapped exit codes", "ref": "§18.4, FR-CONN-06" },
+    { "name": "Admin token transport = X-Admin-Token", "result": "pass", "detail": "spec-named header enforced (§13.1/T-11); Bearer rejected by test; CLI client + smoke harness aligned; QUESTION-103 item 4 corrected", "ref": "§13.1, §17.13 T-11" },
     { "name": "mDNS service contract (§16.2)", "result": "pass", "detail": "instance name, TXT keys/values/255B cap, CI-24 exclusion, register/re-announce/stop vs stubbed zeroconf", "ref": "§16.2, FR-AGT-04" },
     { "name": "TLS pin encoding (b64url no-pad) + lifecycle", "result": "pass", "detail": "create/renew-same-pin/rotate-new-pin/corrupt-refusal", "ref": "§17.3, §17.5, §10.7" },
     { "name": "Pairing/auth E2E smoke (real uvicorn process)", "result": "pass", "detail": "12/12: TLS 1.3 negotiated, TLS 1.2 refused, QR→SAS→approve→token→/models, fail-closed 401, secret never logged", "ref": "§10.6, §15.4, §17.3" },
@@ -57,7 +60,7 @@
     { "id": "TC-SEC-10", "title": "TLS config scan (only 1.3)", "status": "smoke", "where": "WP-08 real-process smoke 12/12; pytest entry pending TLS serving work" }
   ],
   "openQuestions": [
-    { "id": "QUESTION-103", "title": "WP-08 underspecified protocol/admin-surface details", "status": "OPEN", "impact": "Items 1-4 (wire format/admin routes) OPEN. Item 5 IMPLEMENTED in WP-11: QR ep now leads with resolved LAN IPv4 via §16.2 interface selection" },
+    { "id": "QUESTION-103", "title": "WP-08 underspecified protocol/admin-surface details", "status": "OPEN", "impact": "Item 4 (admin header) RESOLVED this round: X-Admin-Token per §13.1/T-11. Still OPEN: items 1-2 (HMAC framing / nonce encoding wire format), route names for operator actions" },
     { "id": "QUESTION-102", "title": "Fingerprint prefix in ready log vs §17.10 allow-list", "status": "OPEN", "impact": "NFR-SEC-02 (P0) wins by precedence — pin omitted from logs until owner adds an allow-list key" },
     { "id": "QUESTION-101", "title": "Ports-layer interpretation of the §10.1 dependency rule", "status": "OPEN", "impact": "Conservative interpretation adopted and enforced by import-linter; owner confirmation welcome" },
     { "id": "ADR-017", "title": "Python build backend (setuptools)", "status": "PROPOSED", "impact": "Needed to install the Agent package; owner approval required" },
@@ -65,9 +68,41 @@
     { "id": "Q-08", "title": "Project license (permissive vs copyleft)", "status": "OPEN", "impact": "zeroconf 0.151.5 is LGPL-2.1-or-later — flagged under CON-03" }
   ],
   "nextSteps": [
-    "Doctor v1 (M3, agent side, sandbox-implementable) — §18.1 connection ladder: config → perms → TLS/pin → port → Backends → mDNS advert visible → firewall (best effort), findings keyed by CI-ID",
-    "WP-09/WP-10 + WP-11 App side (mesh-core Kotlin + RN flow) — needs Android/Gradle build env, blocked in sandbox",
+    "WP-09/WP-10 + WP-11 App side + WP-13 App Diagnostics screen (mesh-core Kotlin + RN flow) — needs Android/Gradle build env, blocked in sandbox",
+    "Real-LAN validation of mDNS advertisement + doctor LAN probes on owner hardware (sandbox multicast unverified)",
     "Owner: run docs/fixtures/CAPTURE.md on a real PC and commit fixtures (flips contract tests to hard gates)",
-    "Owner: approve ADR-017, confirm QUESTION-101/102/103 (103 wire-format items 1-4 still OPEN)"
-  ]
+    "Owner: approve ADR-017, confirm QUESTION-101/102/103 (wire-format items 1-2 still OPEN)",
+    "M4 next: Tailscale probe adapter (WP-14) builds on the doctor's CLI probe"
+  ],
+  "doctor": {
+    "cli": "localmesh-agent doctor [--config] [--json] [--rotate-tls]",
+    "adminEndpoint": "GET /admin/doctor",
+    "commit": "8e86f56",
+    "exitCodes": "0 ok/info · 1 warn · 2 error",
+    "ladder": [
+      { "level": "L0", "requirement": "Phone has a usable network", "failure": "airplane mode, no signal", "coverage": "app" },
+      { "level": "L1", "requirement": "Agent host awake and online", "failure": "PC asleep/hibernating (CI-29)", "coverage": "agent" },
+      { "level": "L2", "requirement": "IP path (same subnet or Tailnet)", "failure": "AP isolation, VLAN, Tailscale off (CI-01/02/13/14)", "coverage": "shared" },
+      { "level": "L3", "requirement": "Phone OS permits the traffic", "failure": "Android local-network permission (CI-09)", "coverage": "app" },
+      { "level": "L4", "requirement": "Name resolution", "failure": "mDNS blocked, .local unresolved (CI-01, CI-08)", "coverage": "shared" },
+      { "level": "L5", "requirement": "Firewall / port", "failure": "Firewall Public profile, wrong port (CI-03, CI-04)", "coverage": "agent" },
+      { "level": "L6", "requirement": "TLS identity", "failure": "pin mismatch (CI-12)", "coverage": "agent" },
+      { "level": "L7", "requirement": "Mesh API reachable and compatible", "failure": "version mismatch (CI-30)", "coverage": "agent" },
+      { "level": "L8", "requirement": "Authenticated", "failure": "revoked/unpaired (CI-12b)", "coverage": "shared" },
+      { "level": "L9", "requirement": "Backend up and model usable", "failure": "Backend stopped, model not loaded (CI-05, CI-21)", "coverage": "agent" },
+      { "level": "L10", "requirement": "Stream survives", "failure": "proxy buffering, network switch (CI-17..20)", "coverage": "shared" }
+    ],
+    "checks": [
+      { "order": 1, "id": "config", "title": "Config valid (Appendix E strict contract)", "ciIds": [], "where": "doctor.py :: run_doctor" },
+      { "order": 2, "id": "data_dir", "title": "Data dir + TLS key perms owner-only (§14.1/§17.6)", "ciIds": ["CI-12"], "where": "doctor.py :: _check_data_dir" },
+      { "order": 3, "id": "tls", "title": "TLS identity valid — pin PREFIX printed (§10.6)", "ciIds": ["CI-12"], "where": "doctor.py :: _check_tls" },
+      { "order": 4, "id": "port", "title": "Port free / listening (self-ID via /info) / occupied", "ciIds": ["CI-04"], "where": "doctor.py :: _check_port" },
+      { "order": 5, "id": "backends", "title": "Backends reachable on loopback (§6 probe paths)", "ciIds": ["CI-05"], "where": "doctor.py :: _check_backends" },
+      { "order": 6, "id": "backend_bind", "title": "Backend LAN-exposure warnings (bind audit)", "ciIds": ["CI-06", "CI-07"], "where": "doctor.py :: _check_backend_bind" },
+      { "order": 7, "id": "mdns", "title": "mDNS advertisement on selected interfaces (T-21 hint)", "ciIds": ["CI-24", "CI-01"], "where": "doctor.py :: _check_mdns" },
+      { "order": 8, "id": "firewall", "title": "Firewall rule for TCP 8443 (OS best effort)", "ciIds": ["CI-03"], "where": "doctor.py :: _check_firewall" },
+      { "order": 9, "id": "tailscale", "title": "Tailnet status via tailscale CLI [ASSUMPTION §6.3]", "ciIds": ["CI-15"], "where": "doctor.py :: _check_tailscale" },
+      { "order": 10, "id": "clock", "title": "Clock sanity (token expiry is monotonic by design)", "ciIds": ["CI-23"], "where": "doctor.py :: _check_clock" }
+    ]
+  }
 }
