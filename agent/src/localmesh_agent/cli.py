@@ -67,7 +67,19 @@ def build_parser() -> argparse.ArgumentParser:
     revoke_parser.add_argument("device_id", help="device id (dv_…) as listed by `devices`")
     revoke_parser.add_argument("--config", default=None, help="path to config.toml")
 
-    sub.add_parser("doctor", help="delivered with WP-13 (M3) per §22.1")
+    doctor_parser = sub.add_parser(
+        "doctor", help="run the §18.4 connection-ladder self-check (FR-CONN-06)"
+    )
+    doctor_parser.add_argument("--config", default=None, help="path to config.toml")
+    doctor_parser.add_argument(
+        "--json", dest="as_json", action="store_true", help="emit findings as JSON"
+    )
+    doctor_parser.add_argument(
+        "--rotate-tls",
+        dest="rotate_tls",
+        action="store_true",
+        help="explicit TLS key rotation (§17.5) — all Phones must re-pair",
+    )
     return parser
 
 
@@ -88,8 +100,9 @@ class AdminUnreachable(RuntimeError):
 def _admin_request(
     settings: object, method: str, path: str, body: dict[str, object] | None = None
 ) -> tuple[int, dict[str, object]]:
-    """One admin API call; returns (status, json). Never puts the token in a
-    URL (§17.6)."""
+    """One admin API call; returns (status, json). The token travels ONLY in
+    the spec-named `X-Admin-Token` header (§13.1/T-11) — never in a URL
+    (§17.6)."""
     from pathlib import Path
 
     from localmesh_agent.admin_app import load_or_create_admin_token
@@ -100,7 +113,7 @@ def _admin_request(
     url = f"http://127.0.0.1:{port}{path}"
     data = json.dumps(body).encode("utf-8") if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
-    request.add_header("Authorization", f"Bearer {token}")
+    request.add_header("X-Admin-Token", token)
     if data is not None:
         request.add_header("Content-Type", "application/json")
     try:
@@ -149,12 +162,19 @@ def _run(args: argparse.Namespace) -> int:
 
     data_dir = settings.ensure_data_dir()
     admin_token = load_or_create_admin_token(data_dir)
+
+    def _admin_doctor() -> list[dict[str, object]]:
+        from localmesh_agent.doctor import run_doctor
+
+        return [f.to_dict() for f in run_doctor(settings)]
+
     admin_app = create_admin_app(
         pairing=app.state.pairing,
         devices=app.state.devices,
         tls_rotate=_make_tls_rotate(settings),
         admin_token=admin_token,
         admin_port=settings.listen.admin_port,
+        doctor_fn=_admin_doctor,
     )
 
     public_host = "127.0.0.1" if args.dev_insecure else settings.listen.host
@@ -331,6 +351,55 @@ def _revoke(args: argparse.Namespace) -> int:
     return 0
 
 
+def _doctor(args: argparse.Namespace) -> int:
+    """§18.4 ordered checks (WP-13, FR-CONN-06); `--rotate-tls` is the §17.5
+    explicit rotation the spec wires into this same command."""
+    if args.rotate_tls:
+        return _rotate_tls(args)
+
+    from localmesh_agent.doctor import render_text, run_doctor, worst_level
+
+    settings: object | None = None
+    config_error: str | None = None
+    try:
+        settings = load_settings(args.config)
+    except Exception as error:  # noqa: BLE001 - any config failure is check 1 (§18.4)
+        config_error = f"{type(error).__name__}: {error}"
+
+    findings = run_doctor(settings, config_error=config_error)  # type: ignore[arg-type]
+    if args.as_json:
+        import json as _json
+
+        print(_json.dumps([f.to_dict() for f in findings], indent=2))
+    else:
+        header = "LocalMesh Agent doctor — LM-ARCH-001 §18.4 connection ladder"
+        print(render_text(findings, header=header))
+    worst = worst_level(findings)
+    return {"ok": 0, "info": 0, "warn": 1, "error": 2}[worst]  # [DESIGN] exit codes
+
+
+def _rotate_tls(args: argparse.Namespace) -> int:
+    """§17.5 Rotate (explicit only): new key ⇒ new pin ⇒ every paired Phone
+    shows PIN_MISMATCH and must re-pair. Suggests revoking all devices
+    (§17.5 'Offer to revoke all devices at the same time')."""
+    from localmesh_agent.security.tls import TlsIdentityError, load_identity, rotate_identity
+
+    settings = load_settings(args.config)
+    tls_dir = settings.ensure_data_dir() / "tls"
+    try:
+        old_prefix = load_identity(tls_dir).pin_prefix
+    except TlsIdentityError:
+        old_prefix = "(unusable or missing)"
+    identity = rotate_identity(tls_dir)
+    print(f"TLS identity rotated (§17.5). Pin prefix {old_prefix} → {identity.pin_prefix}.")
+    print("Every paired Phone will show PIN_MISMATCH and must re-pair (§17.5).")
+    print("Suggested same-time cleanup (§17.5): list and revoke devices —")
+    print("  localmesh-agent devices        # while the Agent is running")
+    print("  localmesh-agent revoke <id>    # per device")
+    print("If the Agent is running, restart it to serve the new identity.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -343,14 +412,10 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(args)
         if args.command == "revoke":
             return _revoke(args)
+        if args.command == "doctor":
+            return _doctor(args)
     except AdminUnreachable as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    if args.command == "doctor":
-        print(
-            "'doctor' is delivered with M3 (WP-13) per LM-ARCH-001 §22.1/§22.2 — "
-            "nothing is invented ahead of its milestone (§1.2)."
-        )
-        return 0
     parser.print_help()
     return 0

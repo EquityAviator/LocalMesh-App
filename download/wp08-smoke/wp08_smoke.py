@@ -188,12 +188,12 @@ def main() -> int:
 
         # --- admin: pending shows SAS; approve ---
         req = urllib.request.Request(ADMIN + "/admin/pair/pending")
-        req.add_header("Authorization", f"Bearer {admin_token}")
+        req.add_header("X-Admin-Token", admin_token)
         with urllib.request.urlopen(req, timeout=10) as resp:
             pending = json.loads(resp.read())
         assert pending["state"] == "claimed" and len(pending["sas"]) == 6
         req = urllib.request.Request(ADMIN + "/admin/pair/approve", method="POST")
-        req.add_header("Authorization", f"Bearer {admin_token}")
+        req.add_header("X-Admin-Token", admin_token)
         with urllib.request.urlopen(req, timeout=10) as resp:
             approved = json.loads(resp.read())
         device_id = approved["device_id"]
@@ -242,7 +242,7 @@ def main() -> int:
 
         # --- admin devices listing (§15.6 surface) ---
         req = urllib.request.Request(ADMIN + "/admin/devices")
-        req.add_header("Authorization", f"Bearer {admin_token}")
+        req.add_header("X-Admin-Token", admin_token)
         with urllib.request.urlopen(req, timeout=10) as resp:
             devices = json.loads(resp.read())["devices"]
         assert len(devices) == 1 and devices[0]["device_id"] == device_id

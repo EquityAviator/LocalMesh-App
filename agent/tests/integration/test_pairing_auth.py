@@ -485,17 +485,18 @@ def build_admin(app: Any) -> httpx.AsyncClient:
         tls_rotate=lambda: rotate_identity(data_dir / "tls").spki_sha256,
         admin_token="test-admin-token",
         admin_port=8444,
+        doctor_fn=lambda: [],  # wired; content covered by test_admin_doctor_endpoint
     )
     app.state.admin_app = admin  # reachable for anonymous-client negative tests
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=admin),
         base_url="http://127.0.0.1:8444",
-        headers={"Authorization": "Bearer test-admin-token", "Host": "127.0.0.1:8444"},
+        headers={"X-Admin-Token": "test-admin-token", "Host": "127.0.0.1:8444"},
     )
 
 
 def build_admin_anonymous(app: Any) -> httpx.AsyncClient:
-    """Same admin app, NO default Authorization header (negative tests)."""
+    """Same admin app, NO admin-token header (negative tests)."""
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app.state.admin_app),
         base_url="http://127.0.0.1:8444",
@@ -516,16 +517,21 @@ async def test_admin_requires_token_and_rejects_bad_host(
                 # Token in the query string must NOT work (§17.6).
                 query_trick = await anonymous.get("/admin/devices?token=test-admin-token")
                 assert query_trick.status_code == 401
-                # Wrong token → 401.
-                wrong = await anonymous.get(
-                    "/admin/devices", headers={"Authorization": "Bearer nope"}
-                )
+                # Wrong token in the spec header → 401.
+                wrong = await anonymous.get("/admin/devices", headers={"X-Admin-Token": "nope"})
                 assert wrong.status_code == 401
+                # §13.1/T-11: the custom header is the ONLY transport — a
+                # Bearer Authorization header is NOT accepted for the admin
+                # surface (and a drive-by cannot set a custom header).
+                bearer = await anonymous.get(
+                    "/admin/devices", headers={"Authorization": "Bearer test-admin-token"}
+                )
+                assert bearer.status_code == 401
             # DNS-rebinding Host → 403 (ADR-014, TC-SEC-06).
             evil = await admin.get(
                 "/admin/devices",
                 headers={
-                    "Authorization": "Bearer test-admin-token",
+                    "X-Admin-Token": "test-admin-token",
                     "Host": "attacker.example:8444",
                 },
             )
@@ -596,3 +602,44 @@ async def test_admin_tls_rotate_returns_new_pin(fake_lmstudio: str, tmp_path: Pa
             new_pin = rotated.json()["spki_pin"]
             assert new_pin != old_pin
             assert len(new_pin) == 43  # b64url(SHA-256), no padding
+
+
+async def test_admin_doctor_endpoint_spec_named(fake_lmstudio: str, tmp_path: Path) -> None:
+    """GET /admin/doctor (spec-named, §13.1) serves the §18.4 findings JSON
+    behind the X-Admin-Token header; anonymous callers get 401."""
+    from localmesh_agent.doctor import Finding
+
+    seeded = Finding(
+        check="tls",
+        level="ok",
+        summary="TLS identity valid — SPKI pin prefix abcdef123456 (§17.3).",
+    )
+    app = create_app(make_settings(fake_lmstudio, tmp_path), dev_insecure=False)
+    async with app.router.lifespan_context(app):  # type: ignore[attr-defined]
+        data_dir = Path(str(app.state.settings.ensure_data_dir()))
+        admin = create_admin_app(
+            pairing=app.state.pairing,
+            devices=app.state.devices,
+            tls_rotate=lambda: rotate_identity(data_dir / "tls").spki_sha256,
+            admin_token="test-admin-token",
+            admin_port=8444,
+            doctor_fn=lambda: [seeded.to_dict()],
+        )
+        authorized = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=admin),
+            base_url="http://127.0.0.1:8444",
+            headers={"X-Admin-Token": "test-admin-token", "Host": "127.0.0.1:8444"},
+        )
+        async with authorized as client:
+            response = await client.get("/admin/doctor")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["findings"][0]["check"] == "tls"
+            assert body["findings"][0]["ci_ids"] == []
+        anonymous = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=admin),
+            base_url="http://127.0.0.1:8444",
+            headers={"Host": "127.0.0.1:8444"},
+        )
+        async with anonymous as client:
+            assert (await client.get("/admin/doctor")).status_code == 401

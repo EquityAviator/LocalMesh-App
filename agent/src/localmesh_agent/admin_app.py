@@ -8,15 +8,22 @@ file**, **strict `Host` check** (anti DNS-rebinding), **no CORS** — never
 reachable from LAN/Tailnet (the listener binds loopback AND the Host
 middleware rejects rebinding attempts, §17.13 TC-SEC-06).
 
+Token transport (spec-explicit): the Admin API authenticates with the custom
+header **`X-Admin-Token`** (§13.1 "Loopback Admin API (separate listener
+`127.0.0.1:8444`, header `X-Admin-Token`)" + §17.13 T-11 "custom header
+`X-Admin-Token`"). A drive-by web request cannot set a custom header, so the
+custom header is the DNS-rebinding mitigation T-11 names. The token never
+appears in URLs/query strings (§17.6) and is compared constant-time.
+
 §17.6 secret matrix: the admin token lives in `admin.token` (owner-only,
-0600) and must never appear in URLs/query strings — the only accepted
-transport is the `Authorization: Bearer` header compared constant-time.
+0600) and must never be logged.
 
 Route names beyond the spec-named `POST /admin/tls/rotate` (§17.5) are
 [DESIGN]: §15.4/§15.6 name the operator ACTIONS (open pairing, pending
 device + SAS, approve, deny, devices, revoke) without fixing paths; they are
 recorded in docs/OPEN_QUESTIONS.md (QUESTION-103) and are loopback-only
-surface, so they can be renamed without contract impact.
+surface, so they can be renamed without contract impact. `GET /admin/doctor`
+IS spec-named (§13.1); it serves the §18.4 findings (WP-13) as JSON.
 """
 
 from __future__ import annotations
@@ -73,11 +80,14 @@ def create_admin_app(
     tls_rotate: Callable[[], str],
     admin_token: str,
     admin_port: int,
+    doctor_fn: Callable[[], list[Any]] | None = None,
 ) -> FastAPI:
     """Admin app factory (§10.5: all state created here; no globals).
 
     `pairing`/`devices` are the WP-08 services; `tls_rotate` performs §17.5
-    Rotate (explicit only) and returns the NEW SPKI pin.
+    Rotate (explicit only) and returns the NEW SPKI pin; `doctor_fn` runs the
+    §18.4 ordered checks (WP-13) and returns serializable findings — injected
+    by the CLI wiring so the admin layer stays free of doctor imports.
     """
     app = FastAPI(title="LocalMesh Agent Admin", version="0.1.0", docs_url=None, redoc_url=None)
     app.state.admin_token = admin_token
@@ -102,16 +112,17 @@ def create_admin_app(
                     }
                 },
             )
-        # 2. Admin token — header ONLY, constant-time compare (§17.6).
-        header = request.headers.get("Authorization", "")
-        expected = f"Bearer {admin_token}"
-        if not hmac.compare_digest(header.encode("utf-8"), expected.encode("utf-8")):
+        # 2. Admin token — spec-named custom header ONLY (§13.1/T-11),
+        #    constant-time compare (§17.6). A drive-by request cannot set a
+        #    custom header, which is exactly the T-11 mitigation.
+        header = request.headers.get("X-Admin-Token", "")
+        if not hmac.compare_digest(header.encode("utf-8"), admin_token.encode("utf-8")):
             return JSONResponse(
                 status_code=401,
                 content={
                     "error": {
                         "code": "AUTH_REQUIRED",
-                        "message": "Admin token required (Authorization: Bearer).",
+                        "message": "Admin token required (X-Admin-Token header).",
                         "retryable": False,
                         "request_id": getattr(request.state, "mesh_request_id", None),
                         "details": {},
@@ -189,5 +200,17 @@ def create_admin_app(
     async def admin_tls_rotate() -> dict[str, str]:
         new_pin = tls_rotate()
         return {"spki_pin": new_pin, "note": "Phones must re-pair (PIN_MISMATCH, §17.5)."}
+
+    # -- doctor (spec-named GET /admin/doctor, §13.1; findings per §18.4) ------
+
+    @app.get("/admin/doctor")
+    async def admin_doctor() -> dict[str, object]:
+        if doctor_fn is None:  # pragma: no cover - wiring always injects it
+            raise MeshError("INVALID_REQUEST", "Doctor is not wired into this agent.")
+        # Probes block (sockets/subprocess); keep the loop free (§10.4 spirit).
+        import asyncio
+
+        findings = await asyncio.to_thread(doctor_fn)
+        return {"findings": findings}
 
     return app

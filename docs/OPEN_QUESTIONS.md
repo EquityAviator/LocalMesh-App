@@ -46,9 +46,15 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
      §15.4/§15.6 name the operator ACTIONS but not paths. Shipped (loopback-only,
      rename-safe): `POST /admin/pair/open|approve|deny|close`, `GET
      /admin/pair/pending`, `GET /admin/devices`, `POST
-     /admin/devices/{id}/revoke`, `POST /admin/tls/rotate`. Admin token is
-     carried as `Authorization: Bearer` (§17.6 forbids URLs/query strings but
-     names no header).
+     /admin/devices/{id}/revoke`, `POST /admin/tls/rotate`.
+     **Corrected (WP-13 round, 2026-10-04):** the admin token header is now the
+     spec-explicit **`X-Admin-Token`** — §13.1 "Loopback Admin API (separate
+     listener `127.0.0.1:8444`, header `X-Admin-Token`)" and §17.13 T-11
+     "custom header `X-Admin-Token`" both name it; the original WP-08 reading
+     ("§17.6 names no header" → `Authorization: Bearer`) overlooked that
+     evidence and the code was aligned in the same round (admin_app.py, cli.py,
+     tests, smoke script). The remaining item — route NAMES for the operator
+     actions — stays OPEN (loopback-only, rename-safe).
   5. **QR `ep` before WP-11 mDNS** (§17.4): the QR advertises
      `https://<hostname>:<listen.port>` as the best non-invented endpoint;
      proper LAN-IP advertisement arrives with WP-11.
