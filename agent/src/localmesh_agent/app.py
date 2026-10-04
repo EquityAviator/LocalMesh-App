@@ -32,10 +32,15 @@ from localmesh_agent.adapters.discovery.mdns import (
     build_service_ad,
     resolve_advertise_addresses,
 )
+from localmesh_agent.adapters.hardware.nvidia_probe import NvmlGpuProbe
+from localmesh_agent.adapters.hardware.psutil_probe import (
+    CompositeHardwareProbe,
+    PsutilHardwareProbe,
+)
 from localmesh_agent.adapters.ports import InferenceBackend, SystemClock, TailnetInfo
 from localmesh_agent.adapters.tailscale import TailscaleCliProbe
 from localmesh_agent.api.errors import mesh_error_handler
-from localmesh_agent.api.v1 import auth, chat, health, info, models, pair, requests
+from localmesh_agent.api.v1 import auth, chat, device, health, info, models, pair, requests
 from localmesh_agent.api.v1.auth import ChallengeStore
 from localmesh_agent.config import Settings
 from localmesh_agent.core.entities import new_uuid7
@@ -182,12 +187,22 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     # -- WP-14 (§6.3/§18.6): TailnetProbe port implementation. The probe runs
     #    at lifespan-startup (subprocess in a thread pool, 2 s timeout per
     #    §10.5); its snapshot feeds the §10.6 step-7 ready log, the pairing
-    #    QR/status tailnet block (§13.2/§18.6) and — with WP-15 — /device.
+    #    QR/status tailnet block (§13.2/§18.6) and `GET /device` (WP-15).
     #    Detection only: never authorization (SEC-N4), never a login manager
     #    (§18.6). Failures degrade to state="unknown"/None, never block start
     #    (T-21 spirit: untrusted hints must not take the Agent down).
     app.state.tailnet_probe = TailscaleCliProbe()
     app.state.tailnet: TailnetInfo | None = None
+
+    # -- WP-15 (§10.2 HardwareProbe, §22.2 M5): best-effort hardware snapshot
+    #    for API-DEV-01 `GET /device` (FR-STAT-01). psutil provides OS/CPU/
+    #    RAM; the optional pynvml probe appends NVIDIA GPUs when a driver is
+    #    present (§21.2). Both run blocking reads in a thread pool with 2 s
+    #    timeouts (§10.5) and degrade to null/empty fields — never raise.
+    app.state.hardware = CompositeHardwareProbe(
+        PsutilHardwareProbe(),
+        gpu_probes=(NvmlGpuProbe(),),
+    )
 
     # -- WP-11 discovery (§10.6 step 5, FR-AGT-04, §16.2): the advertiser
     #    is created here but STARTED at lifespan-startup, after the registry
@@ -200,13 +215,14 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         )
 
     # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
-    # (info/pair/auth). device.py arrives with WP-15 (hardware probes,
-    # §22.2); tasks.py with M7 (§13.9) — not registered here (scope fence).
+    # (info/pair/auth) + WP-15 scope (device, §22.2 M5). tasks.py arrives
+    # with M7 (§13.9) — not registered here (scope fence).
     app.include_router(info.router)
     app.include_router(pair.router)
     app.include_router(auth.router)
     app.include_router(models.router)
     app.include_router(health.router)
+    app.include_router(device.router)
     app.include_router(chat.router)
     app.include_router(requests.router)
 

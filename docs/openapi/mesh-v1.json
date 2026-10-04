@@ -166,6 +166,28 @@
         }
       }
     },
+    "/mesh/v1/device": {
+      "get": {
+        "tags": [
+          "device"
+        ],
+        "summary": "Get Device",
+        "description": "Serve API-DEV-01 (\u00a713.2) \u2014 best-effort hardware/network report.",
+        "operationId": "get_device_mesh_v1_device_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/mesh/v1/chat/completions": {
       "post": {
         "summary": "Chat Completions",
@@ -286,6 +308,168 @@
         "title": "AgentInfo",
         "description": "Body of `GET /mesh/v1/info` (API-INFO-01, \u00a713.2).\n\nNo OS, no model info, no IPs (limits pre-auth disclosure)."
       },
+      "CpuInfo": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "CPU model string if reported (\u00a713.2)."
+          },
+          "logical_cores": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logical Cores",
+            "description": "Logical core count if reported (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "logical_cores"
+        ],
+        "title": "CpuInfo"
+      },
+      "DeviceResponse": {
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id",
+            "description": "Stable Agent identifier (\u00a713.2)."
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Operator-set Agent display name (\u00a713.2)."
+          },
+          "agent_version": {
+            "type": "string",
+            "title": "Agent Version",
+            "description": "Semantic Agent version (NFR-COMP-02)."
+          },
+          "os": {
+            "$ref": "#/components/schemas/OsInfo",
+            "description": "OS block, all fields nullable (FR-STAT-01)."
+          },
+          "cpu": {
+            "$ref": "#/components/schemas/CpuInfo",
+            "description": "CPU block, all fields nullable (FR-STAT-01)."
+          },
+          "ram": {
+            "$ref": "#/components/schemas/RamInfo",
+            "description": "RAM block, all fields nullable (FR-STAT-01)."
+          },
+          "gpus": {
+            "items": {
+              "$ref": "#/components/schemas/GpuEntry"
+            },
+            "type": "array",
+            "title": "Gpus",
+            "description": "Detected GPUs; empty when none reported (\u00a713.2)."
+          },
+          "network": {
+            "$ref": "#/components/schemas/NetworkInfo",
+            "description": "LAN + Tailnet addressing (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "display_name",
+          "agent_version",
+          "os",
+          "cpu",
+          "ram",
+          "gpus",
+          "network"
+        ],
+        "title": "DeviceResponse"
+      },
+      "GpuEntry": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "GPU name if reported (\u00a713.2)."
+          },
+          "vram_total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vram Total Bytes",
+            "description": "Total VRAM in bytes (\u00a713.2)."
+          },
+          "vram_used_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vram Used Bytes",
+            "description": "Used VRAM in bytes (\u00a713.2)."
+          },
+          "utilization_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utilization Pct",
+            "description": "GPU utilization percent (\u00a713.2)."
+          },
+          "temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature C",
+            "description": "GPU temperature in \u00b0C (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "vram_total_bytes",
+          "vram_used_bytes",
+          "utilization_pct",
+          "temperature_c"
+        ],
+        "title": "GpuEntry"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -298,6 +482,139 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "NetworkInfo": {
+        "properties": {
+          "lan_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lan Addresses",
+            "description": "Private LAN IPv4s (\u00a716.2 selection)."
+          },
+          "tailnet": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TailnetBlock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tailnet block, null when Tailscale is absent (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lan_addresses",
+          "tailnet"
+        ],
+        "title": "NetworkInfo"
+      },
+      "OsInfo": {
+        "properties": {
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family",
+            "description": "OS family, e.g. 'windows'/'linux'/'darwin' (\u00a713.2)."
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "OS version/release if reported (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "family",
+          "version"
+        ],
+        "title": "OsInfo"
+      },
+      "RamInfo": {
+        "properties": {
+          "total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Bytes",
+            "description": "Total physical RAM in bytes (\u00a713.2)."
+          },
+          "available_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Bytes",
+            "description": "Currently available RAM in bytes (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_bytes",
+          "available_bytes"
+        ],
+        "title": "RamInfo"
+      },
+      "TailnetBlock": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "Tailscale probe state (\u00a76.3, WP-14)."
+          },
+          "dns_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dns Name",
+            "description": "MagicDNS name without trailing dot (\u00a76.3)."
+          },
+          "ips": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ips",
+            "description": "100.64.0.0/10 addresses (\u00a76.3)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "dns_name",
+          "ips"
+        ],
+        "title": "TailnetBlock"
       },
       "ValidationError": {
         "properties": {

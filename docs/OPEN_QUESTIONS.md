@@ -20,6 +20,30 @@ Format (append below, keep reverse-chronological order — newest first):
 Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARCH-001
 §24); agent-raised questions use QUESTION-101 onwards to avoid ID collisions.
 
+## QUESTION-105 — Does `--dev-insecure-loopback` (§17.9) waive Device Token auth?
+- Date: 2026-10-04
+- Raised by: WP-15 smoke QA (real uvicorn process on the dev loopback)
+- Question: §17.9 sanctions `--dev-insecure-loopback` (cleartext HTTP on
+  127.0.0.1 only, debug builds, SEC-N6 gate) but does NOT say whether the
+  loopback listener still requires Device Token auth under §17.7 ("each
+  handler checks scope server-side") or may auto-authenticate as a
+  per-process Device. Which is intended?
+- Context/evidence: `agent/src/localmesh_agent/api/deps.py` implements the
+  bypass — dev-insecure returns `Principal(dev_device_id, DEFAULT_SCOPES)`
+  without a Bearer header (M1-compat reading, kept deliberately in WP-08 per
+  worklog "dev-insecure 路径保留（M1 测试兼容）"). The CLI banner at
+  `agent/src/localmesh_agent/cli.py` previously printed "token auth ON" for
+  this mode, which contradicts the implemented behavior (banner reworded in
+  the WP-15 round, behavior left untouched pending the answer). The public
+  TLS listener always enforces tokens (§17.7/§17.8); production default is
+  unaffected (§17.9 OFF by default, SEC-N6).
+- Why we must not guess: making dev mode token-required would change M1-era
+  developer workflows and tests; leaving the bypass unconfirmed risks a
+  spec deviation living silently in the auth dependency.
+- Default if unanswered: keep the M1-compat bypass (dev-only, loopback-only,
+  OFF by default), banner now describes it accurately.
+- Status: OPEN
+
 ## QUESTION-104 — `tailscale status --json` field names unverified against a real install
 - Date: 2026-10-04
 - Raised by: WP-14 (TailnetProbe adapter, §6.3/§18.6/§22.3)

@@ -181,7 +181,8 @@ def _run(args: argparse.Namespace) -> int:
     if args.dev_insecure:
         print(
             f"localmesh-agent DEV loopback on http://127.0.0.1:{settings.listen.port} "
-            f"(§17.9; token auth ON; admin on 127.0.0.1:{settings.listen.admin_port})"
+            f"(§17.9 dev-only; token auth BYPASSED — per-process Device identity, "
+            f"QUESTION-105; admin on 127.0.0.1:{settings.listen.admin_port})"
         )
     else:
         print(
