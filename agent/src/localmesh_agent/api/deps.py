@@ -26,6 +26,7 @@ checks scope server-side; the App UI hiding a control is not authorization").
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NoReturn
 
 from fastapi import Request
 
@@ -49,26 +50,34 @@ _BEARER_PREFIX = "Bearer "
 def get_principal(request: Request) -> Principal:
     """FastAPI dependency: resolve the caller identity (fail-closed, SEC-N4)."""
     app_state = request.app.state
+    metrics = getattr(app_state, "metrics", None)
     if getattr(app_state, "dev_insecure", False):
         return Principal(device_id=str(app_state.dev_device_id), scopes=DEFAULT_SCOPES)
 
+    def _reject(code: str, message: str) -> NoReturn:
+        # §20.1 auth_failures_total — every 401-class rejection (Metadata
+        # only; no token material, no header bytes anywhere near metrics).
+        if metrics is not None:
+            metrics.inc("auth_failures_total")
+        raise MeshError(code, message)
+
     header = request.headers.get("Authorization")
     if header is None or not header.startswith(_BEARER_PREFIX):
-        raise MeshError("AUTH_REQUIRED", "A Bearer Device Token is required.")
+        _reject("AUTH_REQUIRED", "A Bearer Device Token is required.")
     token = header[len(_BEARER_PREFIX) :].strip()
     if not token:
-        raise MeshError("AUTH_REQUIRED", "A Bearer Device Token is required.")
+        _reject("AUTH_REQUIRED", "A Bearer Device Token is required.")
 
     tokens = getattr(app_state, "tokens", None)
     if tokens is None:  # pragma: no cover - app factory always wires it
-        raise MeshError("AUTH_REQUIRED", "Authentication is not available.")
+        _reject("AUTH_REQUIRED", "Authentication is not available.")
     result = tokens.verify(token)
     if isinstance(result, TokenRejection):
         if result.expired:
-            raise MeshError("TOKEN_EXPIRED", "The Device Token has expired; re-authenticate.")
-        raise MeshError("AUTH_FAILED", "Authentication failed.")
+            _reject("TOKEN_EXPIRED", "The Device Token has expired; re-authenticate.")
+        _reject("AUTH_FAILED", "Authentication failed.")
     if result is None:
-        raise MeshError("AUTH_FAILED", "Authentication failed.")
+        _reject("AUTH_FAILED", "Authentication failed.")
 
     devices = getattr(app_state, "devices", None)
     if devices is not None:

@@ -125,6 +125,21 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
      evidence and the code was aligned in the same round (admin_app.py, cli.py,
      tests, smoke script). The remaining item — route NAMES for the operator
      actions — stays OPEN (loopback-only, rename-safe).
+     **Corrected again (round 10, 2026-10-05):** a full re-read of §13.1 shows
+     it DOES enumerate the admin routes after all ("Loopback Admin API …:
+     `POST /admin/pairing/open|approve|deny|close`, `GET /admin/pairing`, `GET
+     /admin/devices`, `PATCH /admin/devices/{id}` (scopes, name),
+     `DELETE /admin/devices/{id}`, `GET /admin/status`, `POST
+     /admin/tls/rotate`, `GET /admin/doctor") — the same overlooked-evidence
+     class as the X-Admin-Token miss. Aligned: the spec-named routes are now
+     primary (`POST /admin/pairing/*`, `GET /admin/pairing`, `PATCH
+     /admin/devices/{id}`, `DELETE /admin/devices/{id}`, `GET /admin/status`)
+     and the previously missing `PATCH`/`status` endpoints are implemented
+     (PATCH is the §13.1 operator grant mechanism for `models:manage`/`tasks`).
+     The WP-08 [DESIGN] names remain as loopback-only aliases; owner may drop
+     the aliases with a one-line diff. Item status: **RESOLVED by
+     implementation** (no owner input needed unless the alias retention is
+     objected to).
   5. **QR `ep` before WP-11 mDNS** (§17.4): the QR advertises
      `https://<hostname>:<listen.port>` as the best non-invented endpoint;
      proper LAN-IP advertisement arrives with WP-11.

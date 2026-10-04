@@ -168,6 +168,65 @@ def _run(args: argparse.Namespace) -> int:
 
         return [f.to_dict() for f in run_doctor(settings)]
 
+    def _admin_status() -> dict[str, object]:
+        """§13.1 `GET /admin/status` — shape [DESIGN] (the spec names the
+        endpoint, not the body). Metadata ONLY (§17.6): no tokens, no full
+        SPKI pin (12-char prefix, same rule as §10.6 doctor), no Content."""
+        import time as _time
+
+        state = app.state
+        device_rows = state.devices.list()
+        active = sum(1 for row in device_rows if row.get("revoked_at") is None)
+        pairing_state = state.pairing.pending()[0].value
+        tailnet = getattr(state, "tailnet", None)
+        return {
+            "agent_id": state.agent_id,
+            "display_name": settings.agent.display_name,
+            "agent_version": state.agent_version,
+            "uptime_s": int(_time.monotonic() - state.started_mono),
+            "pairing_state": pairing_state,
+            "devices": {
+                "total": len(device_rows),
+                "active": active,
+                "revoked": len(device_rows) - active,
+            },
+            "backends": [
+                {
+                    "id": str(backend.get("id")),
+                    "status": str(backend.get("status")),
+                }
+                for backend in state.registry.snapshot().get("backends", [])
+                if isinstance(backend, dict)
+            ],
+            "queue": state.scheduler.queue_stats(),
+            "listen": {
+                "host": "127.0.0.1" if args.dev_insecure else settings.listen.host,
+                "port": settings.listen.port,
+                "admin_port": settings.listen.admin_port,
+                "dev_insecure": args.dev_insecure,  # QUESTION-105 context
+            },
+            "tls": {
+                # T-21 hint semantics: prefix only, never the full pin (§17.6).
+                "spki_pin_prefix": str(state.spki_pin)[:12],
+            },
+            "tailnet": (
+                {
+                    "state": tailnet.state,
+                    "dns_name": tailnet.dns_name,
+                    "ips": list(tailnet.ips),
+                }
+                if tailnet is not None
+                else None
+            ),
+        }
+
+    def _admin_metrics() -> str:
+        """§20.1 Prometheus text exposition — pull gauges refreshed at scrape
+        so queue/backend gauges reflect live state (observability.metrics)."""
+        state = app.state
+        state.metrics.refresh_pull_gauges(scheduler=state.scheduler, registry=state.registry)
+        return state.metrics.render_prometheus()
+
     admin_app = create_admin_app(
         pairing=app.state.pairing,
         devices=app.state.devices,
@@ -175,6 +234,8 @@ def _run(args: argparse.Namespace) -> int:
         admin_token=admin_token,
         admin_port=settings.listen.admin_port,
         doctor_fn=_admin_doctor,
+        status_fn=_admin_status,
+        metrics_fn=_admin_metrics,
     )
 
     public_host = "127.0.0.1" if args.dev_insecure else settings.listen.host

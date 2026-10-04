@@ -51,6 +51,7 @@ from localmesh_agent.core.router import Router
 from localmesh_agent.core.scheduler import Scheduler
 from localmesh_agent.core.warm import KeepWarmScheduler
 from localmesh_agent.observability.logging import configure_logging, get_logger
+from localmesh_agent.observability.metrics import MetricsRegistry
 from localmesh_agent.security.devices import DeviceService
 from localmesh_agent.security.pairing import PairingService
 from localmesh_agent.security.ratelimit import SlidingWindowLimiter
@@ -183,10 +184,12 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         store,
         overrides=list(settings.models.overrides),
     )
+    metrics = MetricsRegistry()  # §20.1 (shared with the admin scrape)
     scheduler = Scheduler(
         {backend.id: backend.concurrency for backend in settings.backends},
         per_device_active=settings.limits.per_device_active,
         max_queued=settings.limits.max_queued,
+        metrics=metrics,  # §20.1 cancel_latency_ms
     )
     router = Router(registry, {a.id: a for a in adapters})
 
@@ -336,6 +339,7 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.metrics = metrics  # §20.1 (instrumentation + admin scrape)
     app.state.dev_insecure = dev_insecure  # SEC-N6: default OFF (§17.9)
     app.state.agent_version = AGENT_VERSION
     app.state.started_mono = time.monotonic()

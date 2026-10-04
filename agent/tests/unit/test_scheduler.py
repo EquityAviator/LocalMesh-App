@@ -101,3 +101,34 @@ async def test_queued_ms_measured_and_fifo_drain() -> None:
     scheduler.release(first, duration_s=0.05)
     await asyncio.wait_for(run_second, timeout=2)
     assert second.queued_ms >= 40  # waited for the first to finish
+
+
+def test_cancel_latency_observed_into_metrics() -> None:
+    """§20.1 cancel_latency_ms: cancel request → job finished observation."""
+    from localmesh_agent.observability.metrics import MetricsRegistry
+
+    metrics = MetricsRegistry()
+    scheduler = Scheduler({"lmstudio": 1}, metrics=metrics)
+    job = scheduler.admit(request_id="rq_1", device_id="dv_1", backend_id="lmstudio")
+    job.state = "running"
+    assert scheduler.cancel("rq_1") is True
+    scheduler.release(job)  # job finished after the cancel request
+    histograms = metrics.snapshot()["histograms"]["cancel_latency_ms"]
+    assert histograms[""]["count"] == 1
+
+    # A second job cancelled only after release (token already cancelled by
+    # the stream exit) must NOT double-count.
+    job2 = scheduler.admit(request_id="rq_2", device_id="dv_1", backend_id="lmstudio")
+    job2.state = "running"
+    job2.token.cancel()  # stream exit path (chat.py finally) — no scheduler stamp
+    scheduler.release(job2)
+    assert metrics.snapshot()["histograms"]["cancel_latency_ms"][""]["count"] == 1
+
+
+def test_cancel_latency_absent_without_metrics_registry() -> None:
+    """Default wiring (no registry injected) stays a no-op — §10.2 injectable."""
+    scheduler = Scheduler({"lmstudio": 1})
+    job = scheduler.admit(request_id="rq_1", device_id="dv_1", backend_id="lmstudio")
+    job.state = "running"
+    scheduler.cancel("rq_1")
+    scheduler.release(job)  # must not raise

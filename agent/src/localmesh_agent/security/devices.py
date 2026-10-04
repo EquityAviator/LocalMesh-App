@@ -20,14 +20,25 @@ store at startup and updated here, so the check is O(1) and DB-free.
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from localmesh_agent.adapters.ports import Store
 from localmesh_agent.core.entities import new_uuid7
+from localmesh_agent.core.errors import MeshError
 from localmesh_agent.security import crypto
 
 # §13.1/§13.2: default scopes granted at pairing approval.
 DEFAULT_DEVICE_SCOPES = ("models:read", "chat")
+
+# The complete scope universe (§17.7 authorization matrix + §13.2 examples):
+# exactly these four are meaningful to the Agent; anything else is rejected
+# by the operator PATCH rather than stored as dead weight (deny-by-default,
+# SEC-N4). `tasks` exists from M2 but its endpoints are M7 stubs (§13.9).
+KNOWN_DEVICE_SCOPES = frozenset({"models:read", "chat", "models:manage", "tasks"})
+
+# Operator-set device name bound (§14.1 `name` is NOT NULL; pairing caps the
+# initial name the same way — keep operator edits consistent).
+MAX_DEVICE_NAME_LEN = 128
 
 
 class DeviceService:
@@ -99,6 +110,75 @@ class DeviceService:
         """O(1) revocation check for running SSE loops (FR-PAIR-06 ≤ 5 s)."""
         with self._lock:
             return device_id in self._live_revoked
+
+    def update(
+        self,
+        device_id: str,
+        *,
+        name: str | None = None,
+        scopes: Sequence[str] | None = None,
+    ) -> dict[str, object] | None:
+        """Operator partial update (§13.1 `PATCH /admin/devices/{id}` — scopes, name).
+
+        This is the spec's grant mechanism: "`models:manage` and `tasks` are
+        granted per Device by the operator (admin UI)" (§13.1). Validation
+        (deny-by-default, SEC-N4):
+
+        - `name` (when provided): stripped non-empty, ≤ MAX_DEVICE_NAME_LEN
+          (§14.1 `name` is NOT NULL; bound [DESIGN], consistent with the
+          pairing flow's operator-display names).
+        - `scopes` (when provided): non-empty subset of KNOWN_DEVICE_SCOPES
+          (§17.7 authorization matrix — the Agent has no behaviour for other
+          scope strings, so storing them would be a silent no-op grant);
+          duplicates collapse; order is normalized (sorted) so the stored
+          space-separated string (§14.1) is canonical.
+        - Revoked devices MAY be edited [DESIGN]: the row is kept per §14.1,
+          but authentication stays blocked regardless (token hashes deleted at
+          revoke + `revoked_at` gate), so this cannot resurrect access.
+
+        Returns the updated §14.1 row (public_key_spki stripped — operator
+        display data only), or None when the device_id is unknown.
+        """
+        clean_name: str | None = None
+        if name is not None:
+            clean_name = name.strip()
+            if not clean_name:
+                raise MeshError("INVALID_REQUEST", "Device name must not be empty.")
+            if len(clean_name) > MAX_DEVICE_NAME_LEN:
+                raise MeshError(
+                    "INVALID_REQUEST",
+                    "Device name is too long.",
+                    details={"limit": MAX_DEVICE_NAME_LEN},
+                )
+        clean_scopes: str | None = None
+        if scopes is not None:
+            unique = sorted(set(scopes))
+            unknown = [scope for scope in unique if scope not in KNOWN_DEVICE_SCOPES]
+            if unknown:
+                raise MeshError(
+                    "INVALID_REQUEST",
+                    "Unknown scope requested.",
+                    details={"unknown": unknown, "allowed": sorted(KNOWN_DEVICE_SCOPES)},
+                )
+            if not unique:
+                raise MeshError(
+                    "INVALID_REQUEST",
+                    "At least one scope is required (revoke the device instead).",
+                )
+            clean_scopes = " ".join(unique)
+        with self._lock:
+            if self._store.get_device(device_id) is None:
+                return None
+            self._store.update_device(device_id, name=clean_name, scopes=clean_scopes)
+            updated = self._store.get_device(device_id)
+        assert updated is not None  # re-read under the same lock
+        # §20.2/§14.1 audit — the §17.10 allow-list has no "changed field"
+        # key, so the entry carries the event + device_id only (which fields
+        # changed would require extending the spec'd allow-list: owner call).
+        self._store.append_audit("device_updated", device_id=device_id)
+        row = dict(updated)
+        row.pop("public_key_spki", None)
+        return row
 
     def touch_last_seen(self, device_id: str) -> None:
         """Record a successful authentication (§14.1 devices.last_seen_at)."""

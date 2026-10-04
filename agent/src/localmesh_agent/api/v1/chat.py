@@ -76,6 +76,7 @@ async def _stream(
     state = request.app.state
     scheduler = state.scheduler
     store = state.store
+    metrics = getattr(state, "metrics", None)  # §20.1 (optional in tests)
     mesh_model_id = entry.mesh_model_id
     started_mono = time.monotonic()
     store.append_audit(
@@ -272,6 +273,8 @@ async def _stream(
                         "status": "failed",
                     },
                 )
+                if metrics is not None:
+                    metrics.inc("requests_total", labels={"status": "error", "backend": backend.id})
                 return
             if ttft_ms is None and chunk.delta_content is not None:
                 ttft_ms = int((time.monotonic() - started_mono) * 1000)
@@ -286,6 +289,8 @@ async def _stream(
         if cancelled:
             release_job()
             # §13.7 Cancel: abort upstream, free slot, NO further events.
+            if metrics is not None:
+                metrics.inc("requests_total", labels={"status": "cancelled", "backend": backend.id})
             store.append_audit(
                 "chat_finished",
                 meta={
@@ -317,6 +322,13 @@ async def _stream(
         )
         yield "data: [DONE]\n\n"
         release_job()
+        if metrics is not None:
+            # §20.1 push families at the terminal event (Metadata only).
+            metrics.inc("requests_total", labels={"status": "ok", "backend": backend.id})
+            metrics.observe("ttft_ms", float(stats.ttft_ms))
+            if tokens_out > 0:
+                metrics.inc("tokens_out_total", labels={"backend": backend.id}, value=tokens_out)
+                metrics.set_gauge("tokens_per_sec", stats.tokens_per_sec)
         store.append_audit(
             "chat_finished",
             meta={
@@ -382,6 +394,18 @@ async def chat_completions(request: Request) -> object:
             job.token.cancel()
             request.app.state.scheduler.release(job, duration_s=time.monotonic() - started)
         duration_ms = int((time.monotonic() - started) * 1000)
+        completion_tokens = (
+            usage_tokens if usage_tokens is not None else max(1, len("".join(collected)) // 4)
+        )
+        metrics = getattr(request.app.state, "metrics", None)
+        if metrics is not None:
+            # §20.1 — the non-stream shape is a full generation too.
+            metrics.inc("requests_total", labels={"status": "ok", "backend": backend.id})
+            metrics.observe("ttft_ms", float(duration_ms))  # single-shot: TTFT == duration
+            if completion_tokens > 0:
+                metrics.inc(
+                    "tokens_out_total", labels={"backend": backend.id}, value=completion_tokens
+                )
         completion = {
             "id": f"chatcmpl-{request_id}",
             "object": "chat.completion",
@@ -396,19 +420,13 @@ async def chat_completions(request: Request) -> object:
             ],
             "usage": {
                 "prompt_tokens": 0,
-                "completion_tokens": usage_tokens
-                if usage_tokens is not None
-                else max(1, len("".join(collected)) // 4),
-                "total_tokens": usage_tokens
-                if usage_tokens is not None
-                else max(1, len("".join(collected)) // 4),
+                "completion_tokens": completion_tokens,
+                "total_tokens": completion_tokens,
             },
             "x_mesh": {
                 "stats": {
                     "ttft_ms": duration_ms,
-                    "tokens_out": usage_tokens
-                    if usage_tokens is not None
-                    else max(1, len("".join(collected)) // 4),
+                    "tokens_out": completion_tokens,
                     "tokens_per_sec": 0.0,
                     "duration_ms": duration_ms,
                     "finish_reason": finish_reason,

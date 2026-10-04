@@ -24,6 +24,7 @@ from typing import Literal
 from localmesh_agent.adapters.ports import CancelToken, Clock, SystemClock
 from localmesh_agent.core.errors import MeshError
 from localmesh_agent.observability.logging import get_logger
+from localmesh_agent.observability.metrics import MetricsRegistry
 
 log = get_logger("scheduler")
 
@@ -42,6 +43,7 @@ class Job:
     state: Literal["queued", "running", "done", "cancelled"] = "queued"
     queued_ms: int = 0
     cancel_reason: str | None = None
+    cancel_requested_mono: float | None = None  # §20.1 cancel_latency_ms start
     _slot: asyncio.Semaphore | None = field(default=None, repr=False)
     _holds_slot: bool = field(default=False, repr=False)
 
@@ -60,6 +62,7 @@ class Scheduler:
         per_device_active: int = 2,
         max_queued: int = 8,
         clock: Clock | None = None,
+        metrics: MetricsRegistry | None = None,
     ) -> None:
         self._semaphores = {
             backend_id: asyncio.Semaphore(max(1, concurrency))
@@ -72,6 +75,9 @@ class Scheduler:
         self._jobs: dict[str, Job] = {}
         self._device_active: dict[str, int] = {}
         self._recent_durations: list[float] = []
+        # §20.1 cancel_latency_ms (optional; app factory injects the shared
+        # registry — core stays import-light and tests can omit it).
+        self._metrics = metrics
 
     # -- admission (§16.4) ------------------------------------------------------
 
@@ -154,6 +160,13 @@ class Scheduler:
             self._device_active.pop(job.device_id, None)
         else:
             self._device_active[job.device_id] = remaining
+        if job.cancel_requested_mono is not None and self._metrics is not None:
+            # §20.1 cancel_latency_ms: cancel request → job finished (slot
+            # freed), the observable §13.7 "abort ≤ 1 s" commitment.
+            self._metrics.observe(
+                "cancel_latency_ms",
+                max(0.0, (self._clock.now_monotonic() - job.cancel_requested_mono) * 1000),
+            )
 
     # -- cancellation (§13.7: abort ≤ 1 s, free the slot, no further events) ----
 
@@ -163,6 +176,8 @@ class Scheduler:
         job = self._jobs.get(request_id)
         if job is None:
             return False
+        if not job.token.cancelled:
+            job.cancel_requested_mono = self._clock.now_monotonic()
         job.token.cancel()
         job.cancel_reason = "client_request"
         return True
@@ -172,6 +187,7 @@ class Scheduler:
         cancelled = 0
         for job in list(self._jobs.values()):
             if job.device_id == device_id and not job.token.cancelled:
+                job.cancel_requested_mono = self._clock.now_monotonic()
                 job.token.cancel()
                 job.cancel_reason = "device_revoked"
                 cancelled += 1

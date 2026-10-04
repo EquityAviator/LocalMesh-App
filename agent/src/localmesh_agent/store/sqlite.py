@@ -34,6 +34,11 @@ AUDIT_RETENTION_SECONDS = 90 * 24 * 3600  # 90 days
 AUDIT_MAX_ROWS = 10_000
 
 # §20.2 — closed vocabulary of audit events (Metadata only, never Content).
+# Extensibility hook: §14.1's schema comment ends the event enumeration with
+# "…" ("pair_opened|…|chat_finished|…"), so new Metadata-only events may be
+# added when a work package introduces the corresponding operator action
+# ([DESIGN]; `device_updated` arrived with the §13.1 PATCH /admin/devices
+# grant mechanism). Each addition must keep meta keys inside §17.10.
 AUDIT_EVENTS: frozenset[str] = frozenset(
     {
         "pair_opened",
@@ -43,6 +48,7 @@ AUDIT_EVENTS: frozenset[str] = frozenset(
         "auth_ok",
         "auth_fail",
         "device_revoked",
+        "device_updated",
         "chat_started",
         "chat_finished",
         "backend_down",
@@ -182,6 +188,37 @@ class Store:
             self._conn.execute(
                 "UPDATE devices SET last_seen_at = ? WHERE device_id = ?", (ts, device_id)
             )
+
+    def update_device(
+        self,
+        device_id: str,
+        name: str | None = None,
+        scopes: str | None = None,
+    ) -> bool:
+        """Partial operator update (§13.1 `PATCH /admin/devices/{id}`).
+
+        Dynamic SET is safe: the only writable columns are the fixed literals
+        `name`/`scopes`; values are bound parameters (no identifier
+        interpolation). Returns False when the device_id is unknown.
+        """
+        assignments: list[str] = []
+        params: list[object] = []
+        if name is not None:
+            assignments.append("name = ?")
+            params.append(name)
+        if scopes is not None:
+            assignments.append("scopes = ?")
+            params.append(scopes)
+        if not assignments:
+            # Nothing to write — report existence without touching the row.
+            return self.get_device(device_id) is not None
+        params.append(device_id)
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                f"UPDATE devices SET {', '.join(assignments)} WHERE device_id = ?",  # noqa: S608 - fixed column literals
+                tuple(params),
+            )
+        return cursor.rowcount > 0
 
     # -- tokens ------------------------------------------------------------------
 

@@ -294,6 +294,18 @@ class Store(Protocol):
     def list_devices(self) -> list[dict[str, Any]]: ...
     def revoke_device(self, device_id: str, revoked_at: int) -> bool: ...
     def touch_device_last_seen(self, device_id: str, ts: int) -> None: ...
+    def update_device(
+        self,
+        device_id: str,
+        name: str | None = None,
+        scopes: str | None = None,
+    ) -> bool:
+        """Partial operator update (§13.1 `PATCH /admin/devices/{id}`).
+
+        Only the provided fields are written; the row is never created here.
+        Returns False when the device_id is unknown.
+        """
+        ...
 
     # -- tokens (§14.1: SHA-256 hash only; consumed by security.tokens) --------
     def put_token(

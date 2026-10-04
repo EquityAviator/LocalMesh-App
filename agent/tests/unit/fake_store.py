@@ -58,6 +58,21 @@ class FakeStore:
         if device_id in self.devices:
             self.devices[device_id]["last_seen_at"] = ts
 
+    def update_device(
+        self,
+        device_id: str,
+        name: str | None = None,
+        scopes: str | None = None,
+    ) -> bool:
+        device = self.devices.get(device_id)
+        if device is None:
+            return False
+        if name is not None:
+            device["name"] = name
+        if scopes is not None:
+            device["scopes"] = scopes
+        return True
+
     # -- tokens --------------------------------------------------------------------
 
     def put_token(self, token_hash: bytes, device_id: str, issued_at: int, expires_at: int) -> None:

@@ -65,6 +65,9 @@ async def _json_object(request: Request) -> dict[str, Any]:
 @router.post("/mesh/v1/pair/complete", tags=["pairing"], status_code=202)
 async def pair_complete(request: Request) -> dict[str, str]:
     """API-PAIR-01 (§13.2): claim the open session with an HMAC proof → 202."""
+    metrics = getattr(request.app.state, "metrics", None)
+    if metrics is not None:  # §20.1 pairing_attempts_total — any outcome
+        metrics.inc("pairing_attempts_total")
     payload = await _json_object(request)
     _require_fields(
         payload,
