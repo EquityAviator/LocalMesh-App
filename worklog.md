@@ -568,3 +568,41 @@ Work Log:
 
 Stage Summary:
 - M8 COMPLETE (sandbox surface): 331 unit + 104 fake+integration + 20 security = 455 tests green; ruff clean; mypy --strict (21 files) clean; import-linter 3/3; drift OK. Residual owner actions: real Backend tool-calling contract tests (fixtures), §16.6 tunables acceptance (speed scale 100 tok/s is [DESIGN]), classifier model selection.
+
+---
+Task ID: 23 — M9 Hardening & release full implementation (§21.4/§21.6, §17.13, §22.1 M9)
+Agent: Z.ai Code (main agent)
+Task: User directive "complete M0–M9 one by one with full-fledged implementation" — M9 was the last remaining milestone (M0–M8 verified complete via git log + worklog).
+
+项目状态判断:
+- Verified actual repo state first: 65 commits, M6/M7/M8 milestone commits present (ff21f12 / 1c9066a / 3c99be7), worklog Tasks 20-22. The continuation-summary claim of "zero output" was wrong; M9 was the only open milestone.
+- QA/gate inspection exposed that the FINAL M8 commit (e76c45da + 3527196) had NEVER been gate-checked: ruff 20 errors, 14 files with format drift, mypy --strict 3 errors including a REAL runtime bug.
+
+本轮完成 (agent commit <M9> + dashboard round-11, 均落 main):
+1. **Release engineering**:
+   - `scripts/release_gate.sh` — one-command runner of all 9 RELEASE.md gates in §21.4 order (ruff/mypy/4 pytest layers/lint-imports/drift/3 security scans/pip-audit) + SEC-N6 dev-default check; `--release` additionally requires `docs/security/pentest-signoff.md` (manual §17.13 pen-pass gate).
+   - `scripts/release_build.sh` — uv build (PEP 517, ADR-017 setuptools) → wheel+sdist → SHA256SUMS → TC-SEC-07 artifact scan over the exact bytes to be signed; signing documented as manual (minisign, key outside repo).
+   - `scripts/security/scan_artifacts.py` — scans BUILT wheel/sdist/tar with the SAME PATTERNS as scan_secrets (import-shared); explicit empty target FAILS (never sign an empty bundle); tarfile filter="data" (3.14 warning clean).
+   - `scripts/security/check_dev_default.py` — SEC-N6: `run` parses dev_insecure=False + Settings has NO dev field (env can't enable dev mode).
+   - CI `.github/workflows/ci.yml`: release-gate scaffold → real M9 job (on tags): pip install → release_gate.sh --release → release_build.sh → upload-artifact → signing notice.
+   - `docs/security/pentest-signoff.md` — TEMPLATE (never pre-signed; unit test pins it).
+2. **v1.0.0-rc.1**: pyproject `1.0.0rc1` (PEP 440) ↔ `AGENT_VERSION "1.0.0-rc.1"` (SemVer) + `tests/unit/test_release_engineering.py` pinning SemVer validity, the two-spelling sync, gate-script completeness, SEC-N6 defaults, signoff-template honesty. docs/CHANGELOG.md created (M0→M9 history, Keep-a-Changelog).
+3. **ADR-021 (Accepted)** — Go/Rust single-binary decision gate CLOSED: Python kept for v1.0; re-open only via measured-need criteria (installer defect evidence / measured footprint over budget / distribution channel need). ADR index updated (017-021).
+4. **M9 decision register** (docs/RELEASE.md): Q-08 license (zeroconf LGPL-2.1-or-later is the only non-permissive dep per WP-02 evidence; recommendation Apache-2.0 + notices — owner legal review; pyproject intentionally has NO license field) + Q-09 distribution (sideload for v1.0 = spec default). QUESTION-108 opened (OPEN, owner).
+5. **QA fixes (real bugs from the unverified final M8 commit)**:
+   - `security/manual_pairing.py`: `hmac` used at line 138 WITHOUT import → runtime NameError killed every FR-PAIR-07 verify_attempt → added import; `(str, Enum)` → `StrEnum` (UP042).
+   - `security/spake2.py` compute_transcript: `_uncompress_encode(_M_POINT)` with `_M_POINT: tuple|None` → fail-closed None guard (mypy --strict + defensive).
+   - Lint/format drift: 20 ruff errors + 14 format-diffed files fixed (E402 noqa on sys.path-setup scripts, isort order, E501 wraps, unused imports).
+6. **Dashboard round-11**: new "Release engineering (M9 · §21.6)" panel — 9-gate checklist with live badges (pass/announced-skip/pending), built-artifacts card, M9 decision register; milestones M6-M9 → done with honest "agent side / residual owner" details; WP-17..20 rows; gates +5 (release gate, artifact scan, SEC-N6, build+checksums, manual sign-off=pending); securityTests TC-SEC-07/08 → delivered; QUESTION-108; round-11 data; nextSteps rewritten to the owner release path. GateBadge gained a proper "pending" branch.
+   - **QA caught a real dashboard bug mid-round**: my new WP rows shipped `reqs` as a STRING while page.tsx maps `wp.reqs` (array) → whole-page client crash ("Application error") → fixed to arrays. Caught by agent-browser, fixed, re-verified.
+
+验证结果:
+- `bash scripts/release_gate.sh` → **ALL 14 automated steps PASS**: ruff check+format clean, mypy --strict 23 files clean, unit 345 / contract 3 announced skips / integration 141 / security 33 (519 total, 0 failures), import-linter 3/3 KEPT, drift OK, cleartext VACUOUS PASS / content-column / secret scans OK, pip-audit clean, SEC-N6 OK. Verdict banner honestly states manual pen-test sign-off still pending.
+- `bash scripts/release_build.sh` → localmesh_agent-1.0.0rc1 wheel + sdist + SHA256SUMS + artifact scan OK (142+72 files). DeprecationWarning fixed and re-verified under -W error.
+- agent-browser: desktop 1280 (sw=1280) + mobile 390 (sw=390, no overflow), zero console errors, footer gap=0 (sticky), WP filter interaction verified, screenshots download/round11-m9-{release-panel,mobile}.png. bun lint clean.
+
+未解决问题/风险，下一阶段建议:
+1. **M0–M9 all COMPLETE on the agent/sandbox side.** Owner release path: manual pentest checklist on real hardware → commit pentest-signoff.md → tag v1.0.0-rc.1 (CI builds+scans) → minisign SHA256SUMS → publish.
+2. Owner decisions due: Q-08/Q-09 (RELEASE.md register + QUESTION-108), ADR-017/018 approvals, QUESTION-101..107.
+3. Environment-gated items unchanged: fixtures capture (flips contract tests to hard gates), real-GPU/LAN/Tailnet validation, Supabase deployment (QUESTION-107), Android WPs 09/10/11-App/12/13.
+4. Sandbox note: HEAD reset to main between sessions; commits land on main. agent/dist is gitignored.
