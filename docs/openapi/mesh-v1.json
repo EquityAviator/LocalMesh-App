@@ -1,0 +1,91 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LocalMesh Mesh API",
+    "description": "Mesh API (`/mesh/v1`) of the LocalMesh Desktop Agent (LM-ARCH-001 \u00a713).",
+    "version": "1"
+  },
+  "paths": {
+    "/mesh/v1/info": {
+      "get": {
+        "tags": [
+          "info"
+        ],
+        "summary": "Agent information (API-INFO-01)",
+        "operationId": "get_info_mesh_v1_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentApiInfo": {
+        "properties": {
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Versions",
+            "description": "Mesh API versions served, e.g. ['v1'] (\u00a713.10)."
+          },
+          "agent_version": {
+            "type": "string",
+            "title": "Agent Version",
+            "description": "Semantic Agent version (\u00a713.2, NFR-COMP-02)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "versions",
+          "agent_version"
+        ],
+        "title": "AgentApiInfo",
+        "description": "`api` block of the API-INFO-01 response (\u00a713.2)."
+      },
+      "AgentInfo": {
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id",
+            "description": "Stable Agent identifier (\u00a713.2)."
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Operator-set Agent display name (\u00a713.2)."
+          },
+          "api": {
+            "$ref": "#/components/schemas/AgentApiInfo",
+            "description": "API version block (\u00a713.2)."
+          },
+          "pairing_open": {
+            "type": "boolean",
+            "title": "Pairing Open",
+            "description": "Whether a PairingSession is currently OPEN (\u00a713.2)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "display_name",
+          "api",
+          "pairing_open"
+        ],
+        "title": "AgentInfo",
+        "description": "Body of `GET /mesh/v1/info` (API-INFO-01, \u00a713.2).\n\nNo OS, no model info, no IPs (limits pre-auth disclosure)."
+      }
+    }
+  }
+}
