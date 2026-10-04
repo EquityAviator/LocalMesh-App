@@ -18,8 +18,9 @@ Implements the WP-07 subset of §17.3/§17.5 (M2):
   raise `TlsIdentityError` with an actionable message; the public listener
   refuses to start (wired by the app/CLI, not here).
 
-TLS 1.3-only serving and the HTTPS listener arrive with the WP-08/M2
-integration; this module is the identity layer (§22.2 WP-07).
+TLS 1.3-only serving (§17.3) is wired by the CLI through
+`build_tls13_server_context` (defined here since WP-15 so the TC-SEC-10
+entry can handshake against the exact production context).
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import ssl
 import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -310,3 +312,19 @@ def rotate_identity(tls_dir: Path) -> TlsIdentity:
     (tls_dir / CERT_FILENAME).write_bytes(identity.cert_pem)
     _chmod_owner_only(tls_dir / KEY_FILENAME)
     return identity
+
+
+def build_tls13_server_context(cert_path: str, key_path: str) -> ssl.SSLContext:
+    """TLS 1.3-ONLY server context loading the Agent identity (§17.3).
+
+    The public listener negotiates TLS 1.3 or nothing: `minimum_version` is
+    pinned to `TLSVersion.TLSv1_3`, so TLS 1.2 (and older) clients fail the
+    handshake closed. There is no upper bound to configure — TLS 1.3 is the
+    protocol ceiling. Wired into uvicorn via `ssl_context_factory` by the CLI
+    (§17.3) and asserted by the TC-SEC-10 entry (§17.13,
+    `tests/security/test_tc_sec_10_tls13.py`) with real handshakes.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.load_cert_chain(cert_path, key_path)
+    return context

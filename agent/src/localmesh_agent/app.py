@@ -18,7 +18,8 @@ Wire rules (§13): every response carries `X-Mesh-Api-Version: 1` and
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -37,7 +38,7 @@ from localmesh_agent.adapters.hardware.psutil_probe import (
     CompositeHardwareProbe,
     PsutilHardwareProbe,
 )
-from localmesh_agent.adapters.ports import InferenceBackend, SystemClock, TailnetInfo
+from localmesh_agent.adapters.ports import InferenceBackend, SystemClock
 from localmesh_agent.adapters.tailscale import TailscaleCliProbe
 from localmesh_agent.api.errors import mesh_error_handler
 from localmesh_agent.api.v1 import auth, chat, device, health, info, models, pair, requests
@@ -121,48 +122,46 @@ def advertised_endpoints(settings: Settings, *, dev_insecure: bool) -> tuple[str
 
 
 def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
-    """App factory (§10.5: all services created here; no global mutable state)."""
+    """App factory (§10.5: all services created here; no global mutable state).
+
+    The §10.6 startup/shutdown sequence runs through ONE FastAPI **lifespan**
+    handler. The deprecated `@app.on_event` decorators (FastAPI ≥ 0.103) are
+    deliberately not used — they emitted 228 suite-wide DeprecationWarnings
+    before the migration; this factory must stay warning-free.
+    """
     configure_logging(settings.logging.level)
-    app = FastAPI(title="LocalMesh Agent", version=AGENT_VERSION, docs_url=None, redoc_url=None)
-    app.state.settings = settings
-    app.state.dev_insecure = dev_insecure  # SEC-N6: default OFF (§17.9)
-    app.state.agent_version = AGENT_VERSION
-    app.state.started_mono = __import__("time").monotonic()
+    import time
+
     clock = SystemClock()  # §10.2 Clock: injectable; one instance per app
-    app.state.clock = clock
 
     # §10.6 step 2-3: migrations + identity (agent_id + TLS identity, WP-07).
     data_dir = settings.ensure_data_dir()
     store = Store(data_dir / "agent.db")
-    app.state.store = store
     identity = store.get_identity()
     if identity is None:
         agent_id = f"ag_{new_uuid7()}"
         store.set_identity(agent_id, settings.agent.display_name, _now())
         identity = store.get_identity()
     assert identity is not None
-    app.state.agent_id = str(identity["agent_id"])
+    agent_id = str(identity["agent_id"])
     # §10.6 step 3 (WP-07): ECDSA P-256 self-signed identity; spki_sha256 is
     # the pin the App will verify against the QR `fp` (§17.3/§17.5, M2).
     tls_identity = load_or_create_identity(data_dir / "tls")
-    app.state.spki_pin = tls_identity.spki_sha256
 
     # §10.6 step 4: adapters, registry, scheduler, router.
     adapters = build_adapters(settings)
-    app.state.adapters = adapters
     registry = CapabilityRegistry(
-        app.state.agent_id,
+        agent_id,
         adapters,
         store,
-        overrides=list(settings.models.overrides),  # type: ignore[arg-type]
+        overrides=list(settings.models.overrides),
     )
-    app.state.registry = registry
-    app.state.scheduler = Scheduler(
+    scheduler = Scheduler(
         {backend.id: backend.concurrency for backend in settings.backends},
         per_device_active=settings.limits.per_device_active,
         max_queued=settings.limits.max_queued,
     )
-    app.state.router = Router(registry, {a.id: a for a in adapters})
+    router = Router(registry, {a.id: a for a in adapters})
 
     # -- WP-15 part 2 (§16.5, FR-MOD-05): keep-warm policy. The warm set comes
     #    ONLY from the Appendix E override (`models.overrides[].keep_warm`);
@@ -179,7 +178,7 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
                 return True
         return False
 
-    app.state.keep_warm = KeepWarmScheduler(
+    keep_warm = KeepWarmScheduler(
         registry,
         {a.id: a for a in adapters},
         frozenset(
@@ -189,21 +188,19 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         clock=clock,
     )
     # §14.3 dev-mode Device identity (M1 loopback only; token auth is WP-08).
-    app.state.dev_device_id = f"dv_{new_uuid7()}"
+    dev_device_id = f"dv_{new_uuid7()}"
 
     # -- WP-08 security services (§10.4 PairingService/TokenService/
     #    DeviceService; §13.8 limiter; all state lives on app.state, §10.5) --
-    app.state.limiter = SlidingWindowLimiter()
-    app.state.devices = DeviceService(store, on_revoke=app.state.scheduler.cancel_by_device)
-    app.state.tokens = TokenService(store, clock)
-    app.state.challenges = ChallengeStore()
-    app.state.pairing = PairingService(
+    devices_service = DeviceService(store, on_revoke=scheduler.cancel_by_device)
+    tokens = TokenService(store, clock)
+    pairing = PairingService(
         store=store,
-        devices=app.state.devices,
+        devices=devices_service,
         clock=clock,
         ttl_seconds=settings.pairing.ttl_seconds,
         require_confirmation=settings.pairing.require_confirmation,
-        agent_id=str(app.state.agent_id),
+        agent_id=agent_id,
         display_name=settings.agent.display_name,
         spki_pin=tls_identity.spki_sha256,
         endpoints=advertised_endpoints(settings, dev_insecure=dev_insecure),
@@ -217,15 +214,14 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     #    Detection only: never authorization (SEC-N4), never a login manager
     #    (§18.6). Failures degrade to state="unknown"/None, never block start
     #    (T-21 spirit: untrusted hints must not take the Agent down).
-    app.state.tailnet_probe = TailscaleCliProbe()
-    app.state.tailnet: TailnetInfo | None = None
+    tailnet_probe = TailscaleCliProbe()
 
     # -- WP-15 (§10.2 HardwareProbe, §22.2 M5): best-effort hardware snapshot
     #    for API-DEV-01 `GET /device` (FR-STAT-01). psutil provides OS/CPU/
     #    RAM; the optional pynvml probe appends NVIDIA GPUs when a driver is
     #    present (§21.2). Both run blocking reads in a thread pool with 2 s
     #    timeouts (§10.5) and degrade to null/empty fields — never raise.
-    app.state.hardware = CompositeHardwareProbe(
+    hardware = CompositeHardwareProbe(
         PsutilHardwareProbe(),
         gpu_probes=(NvmlGpuProbe(),),
     )
@@ -233,12 +229,108 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     # -- WP-11 discovery (§10.6 step 5, FR-AGT-04, §16.2): the advertiser
     #    is created here but STARTED at lifespan-startup, after the registry
     #    is warm (§10.6 step order). `po` mirrors API-INFO-01 pairing_open.
-    app.state.mdns = None
+    mdns_advertiser = None
     if settings.mdns.enabled:
-        app.state.mdns = build_mdns_advertiser(
+        mdns_advertiser = build_mdns_advertiser(
             settings.mdns.interfaces,
-            pairing_open_fn=app.state.pairing.pairing_open,
+            pairing_open_fn=pairing.pairing_open,
         )
+
+    # -- §10.6 lifespan: startup (steps 4-7) + symmetric shutdown. Captures the
+    #    locals above; registered on the FastAPI instance below (lifespan=).
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # §10.6 step 4: probe Backends and build the registry BEFORE serving;
+        # §16.3 background polling continues afterwards.
+        await registry.refresh()
+        registry.start_polling()
+        # WP-14 (§10.6 step 7): Tailnet status is part of the ready report.
+        # Detection is best effort — any unexpected failure degrades to None
+        # (LAN-only), never blocks the Agent from serving (§18.6, T-21).
+        try:
+            tailnet_info = await tailnet_probe.status()
+        except Exception:  # noqa: BLE001 — detection degrades, never blocks
+            tailnet_info = None
+        app.state.tailnet = tailnet_info
+        pairing.tailnet = tailnet_info  # §13.2/§18.6 pairing block
+        # §17.10 allow-listed keys only (component/status); DNS name and IPs
+        # are NOT logged (no allow-listed key, NFR-SEC-02 — QUESTION-102).
+        log.info(
+            "tailscale_status",
+            extra={
+                "component": "tailscale",
+                "status": tailnet_info.state.lower() if tailnet_info is not None else "absent",
+            },
+        )
+        # §10.6 step 5 (WP-11): start the mDNS advertisement on the selected
+        # interfaces. Failure/degradation must not block Agent start (T-21:
+        # advertisements are untrusted hints; MdnsAdvertiser logs, not raises).
+        if mdns_advertiser is not None:
+            ad = build_service_ad(
+                agent_id,
+                settings.agent.display_name,
+                settings.listen.port,
+                tls_identity.spki_sha256,
+                pairing_open=pairing.pairing_open(),
+            )
+            try:
+                await mdns_advertiser.start(ad)
+            except Exception:  # noqa: BLE001 — discovery degrades, never blocks
+                app.state.mdns = None
+                log.warning("mdns_start_failed", extra={"component": "mdns", "status": "error"})
+        log.info(
+            "agent_ready",
+            extra={
+                "agent_id": agent_id,
+                "backend_id": ",".join(a.id for a in adapters) or None,
+            },
+        )
+        # WP-15 part 2 (§16.5, §10.6 order): the warm loop starts AFTER the
+        # registry is built/warm — it reads registry entries each tick.
+        keep_warm.start()
+        yield
+        # Shutdown is the exact reverse (§10.6 symmetry).
+        await keep_warm.stop()
+        if app.state.mdns is not None:
+            await app.state.mdns.stop()
+            app.state.mdns = None
+        await registry.stop_polling()
+        for adapter in adapters:
+            close = getattr(adapter, "aclose", None)
+            if close is not None:
+                await close()
+        store.close()
+
+    app = FastAPI(
+        title="LocalMesh Agent",
+        version=AGENT_VERSION,
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
+    app.state.settings = settings
+    app.state.dev_insecure = dev_insecure  # SEC-N6: default OFF (§17.9)
+    app.state.agent_version = AGENT_VERSION
+    app.state.started_mono = time.monotonic()
+    app.state.clock = clock
+    app.state.store = store
+    app.state.agent_id = agent_id
+    app.state.spki_pin = tls_identity.spki_sha256
+    app.state.adapters = adapters
+    app.state.registry = registry
+    app.state.scheduler = scheduler
+    app.state.router = router
+    app.state.keep_warm = keep_warm
+    app.state.dev_device_id = dev_device_id
+    app.state.limiter = SlidingWindowLimiter()
+    app.state.devices = devices_service
+    app.state.tokens = tokens
+    app.state.challenges = ChallengeStore()
+    app.state.pairing = pairing
+    app.state.tailnet_probe = tailnet_probe
+    app.state.tailnet = None
+    app.state.hardware = hardware
+    app.state.mdns = mdns_advertiser
 
     # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
     # (info/pair/auth) + WP-15 scope (device, §22.2 M5). tasks.py arrives
@@ -286,70 +378,6 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
                 },
             )
         return await call_next(request)
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        # §10.6 step 4: probe Backends and build the registry BEFORE serving;
-        # §16.3 background polling continues afterwards.
-        await registry.refresh()
-        registry.start_polling()
-        # WP-14 (§10.6 step 7): Tailnet status is part of the ready report.
-        # Detection is best effort — any unexpected failure degrades to None
-        # (LAN-only), never blocks the Agent from serving (§18.6, T-21).
-        try:
-            tailnet_info = await app.state.tailnet_probe.status()
-        except Exception:  # noqa: BLE001 — detection degrades, never blocks
-            tailnet_info = None
-        app.state.tailnet = tailnet_info
-        app.state.pairing.tailnet = tailnet_info  # §13.2/§18.6 pairing block
-        # §17.10 allow-listed keys only (component/status); DNS name and IPs
-        # are NOT logged (no allow-listed key, NFR-SEC-02 — QUESTION-102).
-        log.info(
-            "tailscale_status",
-            extra={
-                "component": "tailscale",
-                "status": tailnet_info.state.lower() if tailnet_info is not None else "absent",
-            },
-        )
-        # §10.6 step 5 (WP-11): start the mDNS advertisement on the selected
-        # interfaces. Failure/degradation must not block Agent start (T-21:
-        # advertisements are untrusted hints; MdnsAdvertiser logs, not raises).
-        if app.state.mdns is not None:
-            ad = build_service_ad(
-                str(app.state.agent_id),
-                settings.agent.display_name,
-                settings.listen.port,
-                tls_identity.spki_sha256,
-                pairing_open=app.state.pairing.pairing_open(),
-            )
-            try:
-                await app.state.mdns.start(ad)
-            except Exception:  # noqa: BLE001 — discovery degrades, never blocks
-                app.state.mdns = None
-                log.warning("mdns_start_failed", extra={"component": "mdns", "status": "error"})
-        log.info(
-            "agent_ready",
-            extra={
-                "agent_id": str(app.state.agent_id),
-                "backend_id": ",".join(a.id for a in adapters) or None,
-            },
-        )
-        # WP-15 part 2 (§16.5, §10.6 order): the warm loop starts AFTER the
-        # registry is built/warm — it reads registry entries each tick.
-        app.state.keep_warm.start()
-
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        await app.state.keep_warm.stop()
-        if app.state.mdns is not None:
-            await app.state.mdns.stop()
-            app.state.mdns = None
-        await registry.stop_polling()
-        for adapter in adapters:
-            close = getattr(adapter, "aclose", None)
-            if close is not None:
-                await close()
-        store.close()
 
     return app
 

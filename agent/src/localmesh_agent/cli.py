@@ -142,11 +142,11 @@ def _print_envelope_error(status: int, payload: dict[str, object]) -> None:
 
 
 def _tls13_server_context(cert_path: str, key_path: str) -> ssl.SSLContext:
-    """TLS 1.3-only server context loading the Agent identity (§17.3)."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.minimum_version = ssl.TLSVersion.TLSv1_3
-    context.load_cert_chain(cert_path, key_path)
-    return context
+    """TLS 1.3-only server context (§17.3) — delegates to the security layer
+    so the TC-SEC-10 entry exercises the exact production context."""
+    from localmesh_agent.security.tls import build_tls13_server_context
+
+    return build_tls13_server_context(cert_path, key_path)
 
 
 def _run(args: argparse.Namespace) -> int:
