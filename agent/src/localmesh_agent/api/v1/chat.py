@@ -28,6 +28,12 @@ M7 (FR-MM-01/02, §13.6): message content may be an OpenAI-style part list.
   routes STT through the separate Whisper service) — chat with audio parts
   returns 501 UNSUPPORTED_CAPABILITY with a hint to use `POST /tasks`
   type=transcribe (FR-MM-02).
+
+M8 (FR-RTE-01..03, §16.6): `model: "auto"` resolves via the §16.6 rule
+engine; the decision (winner + per-candidate scores) is explained in
+`mesh.meta.routing` (additive field, §13.10). FR-AGENT-RT (ADR-020): `tools`
+is 422 unless `[agent_runtime] enabled=true`; tools run through the bounded
+agent loop on the NON-STREAM path only in v1 (stream + tools → 422).
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ from localmesh_agent.api.deps import get_principal, require_scope
 from localmesh_agent.core.entities import MeshStats
 from localmesh_agent.core.errors import MeshError
 from localmesh_agent.core.policy import validate_chat_payload
+from localmesh_agent.core.router import AUTO_MODEL, RoutingDecision
 
 router = APIRouter()
 
@@ -96,6 +103,129 @@ def _capability_gate(messages: list[dict[str, Any]], entry: Any) -> None:
         )
 
 
+def _required_from_messages(
+    messages: list[dict[str, Any]],
+) -> tuple[frozenset[str], frozenset[str]]:
+    """§16.6 required-set derivation [DESIGN mapping]: image parts → the
+    `image` modality + `vision` capability (§13.5 closed vocabulary)."""
+    modalities: set[str] = set()
+    capabilities: set[str] = set()
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "image_url":
+                modalities.add("image")
+                capabilities.add("vision")
+    return frozenset(modalities), frozenset(capabilities)
+
+
+async def _resolve_model(
+    request: Request, payload: dict[str, Any]
+) -> tuple[Any, str, Any, RoutingDecision]:
+    """Resolve `model` — pinned id or §16.6 auto (M8). Returns the tuple the
+    handlers use plus the routing decision for mesh.meta."""
+    state = request.app.state
+    model_ref = str(payload["model"])
+    if model_ref != AUTO_MODEL:
+        backend, backend_model_id, entry = state.router.resolve(model_ref)
+        return (
+            backend,
+            backend_model_id,
+            entry,
+            RoutingDecision(
+                mode="pinned",
+                mesh_model_id=entry.mesh_model_id,
+                backend_id=backend.id,
+                reason="pinned by the request (§10.4)",
+            ),
+        )
+    modalities, capabilities = _required_from_messages(payload["messages"])
+    if payload.get("tools"):
+        capabilities = capabilities | {"tool_calling"}
+    # FR-RTE-03: the classifier (EXPERIMENTAL, off by default) may only
+    # REFINE the required set; on any failure the rule engine runs unchanged.
+    classifier = getattr(state, "classifier_fn", None)
+    if classifier is not None:
+        try:
+            future = classifier(payload["messages"])
+            if future is not None:
+                extra = await future  # FR-RTE-03 experimental path
+                if isinstance(extra, frozenset):
+                    capabilities = capabilities | extra
+        except Exception:  # noqa: BLE001 — experimental path degrades silently
+            pass
+    return state.router.resolve_auto(
+        messages=payload["messages"],
+        max_tokens=payload.get("max_tokens"),
+        required_modalities=modalities,
+        required_capabilities=capabilities,
+    )
+
+
+def _tools_gate(request: Request, payload: dict[str, Any]) -> None:
+    """M8 (ADR-020): `tools` requires the operator flag AND the non-stream
+    path in v1; otherwise 422 before any Backend work happens."""
+    if not payload.get("tools"):
+        return
+    settings = request.app.state.settings
+    if not settings.agent_runtime.enabled:
+        raise MeshError(
+            "INVALID_REQUEST",
+            "Tool calling is disabled on this agent ([agent_runtime] enabled=false; ADR-020).",
+            details={"tools_disabled": True},
+        )
+    if payload.get("stream", True) is not False:
+        raise MeshError(
+            "INVALID_REQUEST",
+            "Tool calling requires stream=false in v1 (ADR-020).",
+            details={"tools_requires_non_stream": True},
+        )
+
+
+async def _run_with_tools(
+    request: Request,
+    backend: Any,
+    backend_model_id: str,
+    entry: Any,
+    payload: dict[str, Any],
+    job: Any,
+) -> Any:
+    """Bounded agent loop over ONE scheduler job (ADR-020)."""
+    from localmesh_agent.core.agent_loop import assistant_turn_from_chunk, run_agent_loop
+
+    state = request.app.state
+    tools = state.tool_registry
+    max_iterations = state.settings.agent_runtime.max_iterations
+
+    async def collect(back: Any, req: Any) -> Any:
+        text: str | None = None
+        finish: str | None = None
+        tool_calls: tuple[Any, ...] = ()
+        async for chunk in back.stream_chat(req, job.token):
+            if chunk.delta_content is not None:
+                text = (text or "") + chunk.delta_content
+            if chunk.finish_reason is not None:
+                finish = chunk.finish_reason
+            if chunk.tool_calls:
+                from localmesh_agent.core.agent_loop import parse_tool_calls
+
+                tool_calls = parse_tool_calls(list(chunk.tool_calls))
+        return assistant_turn_from_chunk(text, finish, tool_calls)
+
+    return await run_agent_loop(
+        backend,
+        backend_model_id=backend_model_id,
+        mesh_model_id=entry.mesh_model_id,
+        messages=payload["messages"],
+        tools=tools,
+        max_iterations=max_iterations,
+        collect_fn=collect,
+        tools_wire=tuple(dict(tool) for tool in payload["tools"]),
+    )
+
+
 def _openai_chunk_json(request_id: str, mesh_model_id: str, chunk: ChatChunk, created: int) -> str:
     """One §13.7 default event: OpenAI chat.completion.chunk JSON."""
     delta: dict[str, str] = {}
@@ -121,6 +251,7 @@ async def _stream(
     backend: Any,
     backend_model_id: str,
     entry: Any,
+    routing: RoutingDecision | None = None,
 ) -> AsyncIterator[str]:
     state = request.app.state
     scheduler = state.scheduler
@@ -171,6 +302,8 @@ async def _stream(
             "queued_ms": job.queued_ms,
             "model_state": entry.state,
         }
+        if routing is not None:  # M8 (§16.6): additive field, §13.10
+            meta["routing"] = routing.to_meta()
         yield _sse_event("mesh.meta", json.dumps(meta, separators=(",", ":"), ensure_ascii=False))
 
         # -- generation: forward chunks, poll for client disconnect ------------
@@ -400,6 +533,7 @@ async def chat_completions(request: Request) -> object:
     except Exception as exc:  # malformed JSON body
         raise MeshError("INVALID_REQUEST", "Request body must be valid JSON.") from exc
     payload = validate_chat_payload(payload)
+    _tools_gate(request, payload)  # M8 (ADR-020): fail fast, before any work
 
     request_id = request.state.mesh_request_id  # set by middleware (§13.3)
 
@@ -409,31 +543,42 @@ async def chat_completions(request: Request) -> object:
         collected: list[str] = []
         finish_reason: str | None = None
         usage_tokens: int | None = None
+        agent_trace: list[dict[str, Any]] | None = None
         started = time.monotonic()
-        backend, backend_model_id, entry = request.app.state.router.resolve(str(payload["model"]))
+        backend, backend_model_id, entry, routing = await _resolve_model(request, payload)
         _capability_gate(payload["messages"], entry)
+        tool_specs = payload.get("tools")
         job = request.app.state.scheduler.admit(
             request_id=request_id, device_id=principal.device_id, backend_id=backend.id
         )
         try:
             await request.app.state.scheduler.await_running(job)
-            async for chunk in backend.stream_chat(
-                ChatRequest(
-                    model=entry.mesh_model_id,
-                    backend_model_id=backend_model_id,
-                    messages=tuple(_mesh_message(m) for m in payload["messages"]),
-                    stream=False,
-                    temperature=payload.get("temperature"),
-                    max_tokens=payload.get("max_tokens"),
-                ),
-                job.token,
-            ):
-                if chunk.delta_content is not None:
-                    collected.append(chunk.delta_content)
-                if chunk.finish_reason is not None:
-                    finish_reason = chunk.finish_reason
-                if chunk.usage_completion_tokens is not None:
-                    usage_tokens = chunk.usage_completion_tokens
+            if tool_specs:
+                # M8 (FR-AGENT-RT, ADR-020): bounded tool loop (non-stream).
+                result = await _run_with_tools(
+                    request, backend, backend_model_id, entry, payload, job
+                )
+                collected.append(result.text)
+                finish_reason = "tool_loop"
+                agent_trace = result.tool_trace
+            else:
+                async for chunk in backend.stream_chat(
+                    ChatRequest(
+                        model=entry.mesh_model_id,
+                        backend_model_id=backend_model_id,
+                        messages=tuple(_mesh_message(m) for m in payload["messages"]),
+                        stream=False,
+                        temperature=payload.get("temperature"),
+                        max_tokens=payload.get("max_tokens"),
+                    ),
+                    job.token,
+                ):
+                    if chunk.delta_content is not None:
+                        collected.append(chunk.delta_content)
+                    if chunk.finish_reason is not None:
+                        finish_reason = chunk.finish_reason
+                    if chunk.usage_completion_tokens is not None:
+                        usage_tokens = chunk.usage_completion_tokens
         finally:
             job.token.cancel()
             request.app.state.scheduler.release(job, duration_s=time.monotonic() - started)
@@ -475,14 +620,17 @@ async def chat_completions(request: Request) -> object:
                     "duration_ms": duration_ms,
                     "finish_reason": finish_reason,
                     "token_count_source": "backend" if usage_tokens is not None else "estimated",
-                }
+                },
+                # M8 (§16.6): routing explained; agent trace is Metadata-only.
+                "routing": routing.to_meta(),
+                **({"agent_trace": agent_trace} if agent_trace else {}),
             },
         }
         return completion
 
     # Resolve + admit BEFORE the response starts so error envelopes (404
     # MODEL_NOT_FOUND, 429 QUEUE_FULL, §13.4) go out with their HTTP status.
-    backend, backend_model_id, entry = request.app.state.router.resolve(str(payload["model"]))
+    backend, backend_model_id, entry, routing = await _resolve_model(request, payload)
     _capability_gate(payload["messages"], entry)
     job = request.app.state.scheduler.admit(
         request_id=request_id, device_id=principal.device_id, backend_id=backend.id
@@ -495,7 +643,7 @@ async def chat_completions(request: Request) -> object:
         "X-Mesh-Request-Id": request_id,  # §13.3: before the first byte
     }
     return StreamingResponse(
-        _stream(request, payload, request_id, job, backend, backend_model_id, entry),
+        _stream(request, payload, request_id, job, backend, backend_model_id, entry, routing),
         status_code=200,
         headers=headers,
         media_type="text/event-stream",

@@ -28,6 +28,7 @@ ALLOWED_CHAT_PARAMS: frozenset[str] = frozenset(
         "frequency_penalty",
         "seed",
         "x_mesh",
+        "tools",  # M8 (FR-AGENT-RT): arrives with its milestone (§13.6)
     }
 )
 
@@ -147,6 +148,10 @@ def validate_chat_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(client_request_id, str) or not client_request_id:
             raise MeshError("INVALID_REQUEST", "x_mesh.client_request_id must be a string.")
 
+    tools = payload.get("tools")
+    if tools is not None:
+        validate_tools_payload(tools)
+
     return payload
 
 
@@ -170,6 +175,50 @@ def validate_model_ref_payload(payload: dict[str, Any]) -> str:
     if not isinstance(mesh_model_id, str) or not mesh_model_id:
         raise MeshError("INVALID_REQUEST", "'mesh_model_id' is required.")
     return mesh_model_id
+
+
+MAX_TOOLS = 16  # [DESIGN] sanity bound (ADR-020)
+
+
+def validate_tools_payload(tools: Any) -> list[dict[str, Any]]:
+    """M8 (§13.6 "tools … arrive with M8"): OpenAI function-calling shape.
+
+    `[{type: "function", function: {name, description?, parameters?}}]`.
+    The allow-listed EXECUTABLE set is decided by ADR-020 (core.tools);
+    this only validates the wire shape so Backends never see garbage.
+    """
+    if not isinstance(tools, list) or not tools:
+        raise MeshError("INVALID_REQUEST", "'tools' must be a non-empty list.")
+    if len(tools) > MAX_TOOLS:
+        raise MeshError("INVALID_REQUEST", f"'tools' limited to {MAX_TOOLS} entries.")
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Each tool must be {type: 'function', function: {...}} (§13.6).",
+            )
+        unknown_tool_keys = sorted(set(tool) - {"type", "function"})
+        if unknown_tool_keys:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Tool contains unknown fields.",
+                details={"unknown_fields": unknown_tool_keys},
+            )
+        function = tool.get("function")
+        if (
+            not isinstance(function, dict)
+            or not isinstance(function.get("name"), str)
+            or not function["name"]
+        ):
+            raise MeshError("INVALID_REQUEST", "tool.function.name is required.")
+        unknown_fn_keys = sorted(set(function) - {"name", "description", "parameters"})
+        if unknown_fn_keys:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "tool.function contains unknown fields.",
+                details={"unknown_fields": unknown_fn_keys},
+            )
+    return tools
 
 
 def _validate_content_parts(parts: list[Any]) -> None:

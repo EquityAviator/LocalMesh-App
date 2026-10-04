@@ -534,3 +534,20 @@ Work Log:
 
 Stage Summary:
 - M6 COMPLETE (sandbox surface): main = ff21f12. Gates: ruff clean (104 files), mypy --strict (core+security 16 files) PASS, import-linter 3/3 KEPT, pytest 284 unit + 83 integration + 20 security = 387 passed, 0 failures. TC-SEC-08 delivered (8/10 per security README). Residual owner actions: Supabase deployment + real call-shape verification (QUESTION-107), Google Sign-In config (FR-CP-01 App side).
+
+---
+Task ID: 21 — M7 Multimodal & Tasks full implementation (§13.9, FR-MM-01..04)
+Agent: Z.ai Code (main agent)
+Task: Complete M7 one-by-one per user directive.
+
+Work Log:
+- FR-MM-01 vision: §13.6 content now string OR OpenAI-style parts (text/image_url/input_audio); parts pass through to OpenAI-compat backends; capability gate AFTER model resolution — image parts need `vision` (§13.5), audio parts in chat → 501 UNSUPPORTED_CAPABILITY with transcribe hint (S-13: STT is a separate service).
+- FR-MM-02 whisper: new `whisper` backend kind [DESIGN per FR-MM-02/S-13] + WhisperBackend adapter (multipart /v1/audio/transcriptions, /v1/models listing, chat explicitly UNSUPPORTED; 300 s bound).
+- FR-MM-03 RAG: embed() on OpenAICompatBackend (/v1/embeddings — §6 documents it for both real backends); core/rag.py (sliding-window chunking, float32-packed vectors, cosine top-k, .txt/.md-only honest scope, ciphertext section text); migration 0002_tables (tasks/task_files/rag_sources/rag_sections/rag_vectors — Content columns ONLY as AES-256-GCM ciphertext; repo content-column scanner green).
+- FR-MM-04 tasks: §13.9 wire contract delivered — POST /tasks 202 {task_id,status:queued}; GET /tasks/{id} {status,progress,result?,error?}; GET /tasks/{id}/events SSE (15 s pings, snapshot-then-live, terminal [DONE]); DELETE (cancel running / fetch-ack delete); PUT /tasks/{id}/attachments/{name} (size caps via tasks.max_attachment_bytes, middleware exception path). Task INPUT and RESULT both encrypted at rest (AAD-bound to task_id; canary rule TC-SEC-01 stays green — diag3 showed plaintext input would have leaked). chat/vision tasks run through the SAME §16 Scheduler; transcribe direct; doc_qa = retrieval + scheduler chat. Retention ≤ 1 h (config capped at 3600) + 60 s sweeper in lifespan.
+- Fakes: /v1/embeddings on fake LM Studio + fake Ollama (deterministic hash vectors, UNVERIFIED-marked); NEW fake_whisper.py (models + multipart transcriptions, scenario-driven); +6 fake self-tests.
+- Exporter updated: tasks router in schema app → 16 paths; drift OK.
+- QA bug cluster fixed during round: (1) encrypt() returns (nonce, ct) — create_task unpacked reversed → InvalidTag → zombie queued rows (also moved decode into try→failed mapping); (2) httpx 0.28 rejects list-of-tuples data= with files= (sync IteratorByteStream) → dict form fields; (3) fake whisper missing do_GET/do_POST dispatch → 501; (4) store drift test extended to EXPECTED_TABLES_M7; (5) test_policy v1 string-only test superseded by M7 parts test.
+
+Stage Summary:
+- M7 COMPLETE (sandbox surface): 310 unit + 37 fake + 96 integration + 20 security = 463 tests green; ruff clean; mypy --strict 19 files clean; import-linter 3/3; OpenAPI 16 paths drift OK; content-column scan OK. Residual owner actions: real Whisper service fixtures (CAPTURE.md), real backend /v1/embeddings contract tests (fixture gate), Android attachment UI (WP-12/13).

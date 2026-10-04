@@ -164,20 +164,50 @@ class LoggingConfig(_StrictModel):
 
 
 class TasksConfig(_StrictModel):
-    """M7 durable Tasks (§13.9, FR-MM-04).
-
-    - `max_attachment_bytes`: `PUT /tasks/{id}/attachments/{name}` size cap
-      ("with size caps"). Defaults to the §13.8 body limit; operators may
-      raise it for voice notes/documents (the body-limit middleware treats
-      attachment routes with this limit separately).
-    - `result_retention_s`: §13.9 hard cap — "Results retained ≤ 1 h".
-      Encrypted at rest (ADR-011 + §13.9); purged on fetch-ack (DELETE) or
-      expiry sweep.
-    """
+    """M7 durable Tasks (§13.9, FR-MM-04): attachment size caps, §13.9's
+    ≤ 1 h result retention, per-task concurrency bound."""
 
     max_attachment_bytes: int = Field(default=10_485_760, gt=0)  # 10 MiB [DESIGN]
     result_retention_s: int = Field(default=3600, ge=30, le=3600)  # §13.9 ≤ 1 h
     max_concurrent: int = Field(default=2, ge=1)  # §13.8 spirit (per-device 2)
+
+
+class RoutingConfig(_StrictModel):
+    """M8 auto-routing (FR-RTE-01..03; §16.6 `[DESIGN — tunable]`).
+
+    `model: "auto"` resolves via the §16.6 score. The four weights are the
+    §16.6 defaults; they live here ("Weights live in config", §16.6). The
+    classifier (FR-RTE-03) is EXPERIMENTAL and OFF by default (S-21: the
+    classifier model is behind a flag); it can only REFINE the rule engine's
+    required-set, never bypass it.
+    """
+
+    weight_quality: float = Field(default=0.40, ge=0, le=1)  # §16.6 verbatim
+    weight_warmth: float = Field(default=0.25, ge=0, le=1)
+    weight_speed: float = Field(default=0.20, ge=0, le=1)
+    weight_queue: float = Field(default=0.15, ge=0, le=1)
+    classifier_enabled: bool = False  # FR-RTE-03: off by default
+    classifier_model: str = ""  # mesh_model_id of the classifier model
+
+    @model_validator(mode="after")
+    def _weights_sum_to_one(self) -> RoutingConfig:
+        total = self.weight_quality + self.weight_warmth + self.weight_speed + self.weight_queue
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError("routing weights must sum to 1.0 (§16.6)")
+        return self
+
+
+class AgentRuntimeConfig(_StrictModel):
+    """M8 agent runtime / tool calling (FR-AGENT-RT; ADR-020).
+
+    DISABLED by default (ADR-020 default-deny): `tools` on chat → 422 until
+    the operator enables it. Tool execution is bounded (iterations, output
+    bytes) and restricted to the built-in allow-listed, no-I/O tools.
+    """
+
+    enabled: bool = False  # ADR-020: default-deny
+    max_iterations: int = Field(default=5, ge=1, le=10)  # ADR-020 bound
+    max_tool_output_bytes: int = Field(default=4096, ge=256)  # ADR-020 bound
 
 
 class ControlPlaneConfig(_StrictModel):
@@ -229,6 +259,8 @@ class Settings(BaseSettings):
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     tasks: TasksConfig = Field(default_factory=TasksConfig)  # §13.9 (M7)
+    routing: RoutingConfig = Field(default_factory=RoutingConfig)  # §16.6 (M8)
+    agent_runtime: AgentRuntimeConfig = Field(default_factory=AgentRuntimeConfig)  # ADR-020 (M8)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
 
     # -- data dir ----------------------------------------------------------

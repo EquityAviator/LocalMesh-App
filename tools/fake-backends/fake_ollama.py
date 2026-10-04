@@ -176,12 +176,63 @@ class FakeOllamaHandler(FakeHandler):
         # (keep_alive on the /v1 path is [UNVERIFIED] §6.2 — the fake ignores
         # it, matching the safe assumption; CAPTURE.md probe will settle it).
         self.server.in_memory.add(model)
+        # M8 (FR-AGENT-RT): tools present + the scaffold marker in the last
+        # user message -> one function-call turn (SSE deltas when streamed,
+        # JSON when not). Deterministic scaffolding (UNVERIFIED_SHAPE) — NOT
+        # real Ollama behaviour.
+        tools = body.get("tools")
+        if isinstance(tools, list) and tools:
+            messages = body.get("messages")
+            last = messages[-1] if isinstance(messages, list) and messages else {}
+            content = last.get("content") if isinstance(last, dict) else ""
+            if isinstance(content, str) and content.startswith("CALL_TOOL:"):
+                tool_name, _, arg_blob = content[len("CALL_TOOL:") :].partition(":")
+                self.send_tool_call_turn(model, str(tool_name), arg_blob or "{}")
+                return
         if body.get("stream"):
             self.stream_chat(
                 model, pieces=["Hello", " from", " fake", " Ollama", "."], gap_ms=10
             )
             return
         self.send_json(self.non_stream_completion(model, "Hello from fake Ollama."))
+
+    def send_tool_call_turn(self, model: str, tool_name: str, arguments: str) -> None:
+        """One tool_calls turn: SSE delta form (upstream is always SSE per
+        ADR-009's single-parser rule) ending with [DONE]."""
+        self.start_sse()
+        try:
+            self.wfile.write(b": localmesh-fake-shape: UNVERIFIED_SHAPE\n\n")
+            chunk_id = f"chatcmpl-fake-{int(time.time() * 1000)}"
+            created = int(time.time())
+            delta: dict[str, Any] = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_fake_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,
+                                        "arguments": arguments,
+                                    },
+                                }
+                            ]
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            }
+            self.wfile.write(f"data: {json.dumps(marked(delta))}\n\n".encode())
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def native_chat(self, body: dict[str, Any]) -> None:
         """NDJSON stream (Ollama native default). Shape UNVERIFIED — no fixture yet.

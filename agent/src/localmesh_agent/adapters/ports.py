@@ -129,6 +129,9 @@ class ChatRequest:
     frequency_penalty: float | None = None
     seed: int | None = None
     client_request_id: str | None = None  # x_mesh.client_request_id (§13.6)
+    # M8 (FR-AGENT-RT): pass-through tool declarations (§13.6; execution is
+    # governed by ADR-020 — the registry allow-list, not this wire field).
+    tools: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +143,9 @@ class ChatChunk:
     finish_reason: str | None = None  # backend-reported finish reason
     usage_prompt_tokens: int | None = None  # Backend-reported usage if any (§13.7)
     usage_completion_tokens: int | None = None
+    # M8 (FR-AGENT-RT): raw OpenAI tool_calls deltas, defensive-parsed
+    # upstream; None when the chunk carries none (§10.3 rule 2).
+    tool_calls: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True)

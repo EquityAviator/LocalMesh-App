@@ -204,6 +204,18 @@ class Scheduler:
 
     # -- stats (§13.2 API-HEALTH-01 queue block; §20.1) ---------------------------
 
+    def backend_load(self, backend_id: str) -> float:
+        """§16.6 queue_load(m) provider: active+queued jobs for one backend
+        normalised by its concurrency, clamped to [0, 1] [DESIGN — tunable:
+        the spec names the input, not the exact formula]."""
+        concurrency = max(1, self._concurrency.get(backend_id, 1))
+        load = sum(
+            1
+            for job in self._jobs.values()
+            if job.backend_id == backend_id and job.state in ("running", "queued")
+        )
+        return max(0.0, min(1.0, load / concurrency))
+
     def queue_stats(self) -> dict[str, int]:
         active = sum(1 for job in self._jobs.values() if job.state == "running")
         queued = sum(1 for job in self._jobs.values() if job.state == "queued")

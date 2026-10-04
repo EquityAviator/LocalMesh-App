@@ -26,14 +26,14 @@ def test_unknown_param_rejected_422() -> None:
                 "model": "m",
                 "messages": [{"role": "user", "content": "hi"}],
                 "logprobs": True,
-                "tools": [],
+                "response_format": {"type": "json_object"},  # arrives with M8+ per §13.6
             }
         )
     error = excinfo.value
     assert error.code == "INVALID_REQUEST"
     assert error.http_status == 422
     assert error.details is not None
-    assert sorted(error.details["unknown_fields"]) == ["logprobs", "tools"]
+    assert sorted(error.details["unknown_fields"]) == ["logprobs", "response_format"]
 
 
 def test_unknown_role_rejected() -> None:

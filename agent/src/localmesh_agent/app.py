@@ -58,6 +58,7 @@ from localmesh_agent.core.registry import CapabilityRegistry
 from localmesh_agent.core.router import Router
 from localmesh_agent.core.scheduler import Scheduler
 from localmesh_agent.core.tasks import TaskService
+from localmesh_agent.core.tools import ToolRegistry
 from localmesh_agent.core.warm import KeepWarmScheduler
 from localmesh_agent.observability.logging import configure_logging, get_logger
 from localmesh_agent.observability.metrics import MetricsRegistry
@@ -252,7 +253,34 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         max_queued=settings.limits.max_queued,
         metrics=metrics,  # §20.1 cancel_latency_ms
     )
-    router = Router(registry, {a.id: a for a in adapters})
+    # -- M8 (§16.6, FR-RTE-01/02): auto-routing providers. quality_rank
+    #    comes from the Appendix E model overrides (default 3, §16.6);
+    #    speed_norm reads recent tokens/s per model (null → 0.5, §16.6);
+    #    queue_load reads the scheduler's per-backend job count.
+    speed_by_model: dict[str, float] = {}
+
+    def _record_speed(mesh_model_id: str, tokens_per_sec: float) -> None:
+        if tokens_per_sec > 0:
+            speed_by_model[mesh_model_id] = tokens_per_sec
+
+    router = Router(
+        registry,
+        {a.id: a for a in adapters},
+        quality_ranks={
+            override.mesh_model_id: override.quality_rank
+            for override in settings.models.overrides
+            if override.quality_rank is not None
+        },
+        speed_fn=lambda mesh_model_id: speed_by_model.get(mesh_model_id),
+        queue_fn=scheduler.backend_load,
+        weights=(
+            settings.routing.weight_quality,
+            settings.routing.weight_warmth,
+            settings.routing.weight_speed,
+            settings.routing.weight_queue,
+        ),
+    )
+    app_speed_recorder = _record_speed
 
     # -- WP-15 part 2 (§16.5, FR-MOD-05): keep-warm policy. The warm set comes
     #    ONLY from the Appendix E override (`models.overrides[].keep_warm`);
@@ -303,6 +331,30 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     )
     rag_service = RagService(store, None, None, tasks_key)
     task_service.set_rag(rag_service)
+
+    # -- M8 (FR-AGENT-RT, ADR-020): the tool registry exists always (it is
+    #    the allow-list); EXECUTION is denied until the operator sets
+    #    [agent_runtime] enabled=true (API-layer gate). `list_models` is
+    #    registered lazily against the live Capability Registry.
+    tool_registry = ToolRegistry()
+    tool_registry.register_models_tool(
+        lambda: [entry.mesh_model_id for entry in registry.entries()]
+    )
+
+    # FR-RTE-03: the classifier hook is wired ONLY when enabled (it stays
+    # experimental and off by default — S-21); failure degrades to the pure
+    # rule engine (chat.py swallows classifier exceptions).
+    classifier_fn = None
+    if settings.routing.classifier_enabled and settings.routing.classifier_model:
+
+        def classifier_fn(messages: list[dict[str, Any]]) -> frozenset[str]:
+            return _classify_intent(
+                registry,
+                {a.id: a for a in adapters},
+                scheduler,
+                settings.routing.classifier_model,
+                messages,
+            )
 
     def _wire_embedder() -> None:
         """FR-MM-03: pick the first embedding-capable Registry entry (source
@@ -496,6 +548,9 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     app.state.tasks = task_service  # M7 (§13.9)
     app.state.tasks_key = tasks_key  # M7: at-rest key (never leaves the process)
     app.state.rag = rag_service
+    app.state.tool_registry = tool_registry  # M8 (ADR-020 allow-list)
+    app.state.speed_recorder = app_speed_recorder  # M8 (§16.6 speed_norm)
+    app.state.classifier_fn = classifier_fn  # M8 (FR-RTE-03): None when off
 
     # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
     # (info/pair/auth) + WP-15 scope (device, §22.2 M5) + M7 scope (tasks,
@@ -556,3 +611,70 @@ def _now() -> int:
     import time
 
     return int(time.time())
+
+
+def _classify_intent(
+    registry: CapabilityRegistry,
+    backends: dict[str, Any],
+    scheduler: Scheduler,
+    classifier_model: str,
+    messages: list[dict[str, Any]],
+) -> asyncio.Future[frozenset[str]] | None:
+    """FR-RTE-03 (EXPERIMENTAL, off by default): schedule ONE classification
+    generation on the running loop; returns the future (the API layer awaits
+    it) or None when the model is unavailable. Failures degrade to the pure
+    rule engine — the classifier can only REFINE the required set."""
+    from localmesh_agent.adapters.ports import ChatMessage, ChatRequest
+
+    entry = registry.get(classifier_model)
+    if entry is None:
+        return None
+    backend = backends.get(entry.backend_id)
+    if backend is None:
+        return None
+    prompt = " ".join(
+        str(message.get("content", ""))[:500]
+        for message in messages
+        if isinstance(message.get("content"), str)
+    )[-1000:]
+
+    async def _run() -> frozenset[str]:
+        job = scheduler.admit(
+            request_id=f"classifier-{id(messages):x}",
+            device_id="ag_internal",
+            backend_id=entry.backend_id,
+        )
+        try:
+            await scheduler.await_running(job)
+            text = ""
+            async for chunk in backend.stream_chat(
+                ChatRequest(
+                    model=entry.mesh_model_id,
+                    backend_model_id=entry.backend_model_id,
+                    messages=(
+                        ChatMessage(
+                            role="user",
+                            content=(
+                                "Classify the request into exactly one category "
+                                "(vision|code|reasoning|chat). Answer with the "
+                                "category word only.\n\n" + prompt
+                            ),
+                        ),
+                    ),
+                    stream=False,
+                ),
+                job.token,
+            ):
+                if chunk.delta_content is not None:
+                    text += chunk.delta_content
+        finally:
+            job.token.cancel()
+            scheduler.release(job)
+        word = text.strip().lower()
+        if word in ("vision", "code", "reasoning", "chat"):
+            return frozenset({word})
+        return frozenset()
+
+    # Handlers always run inside a loop; ensure_future schedules the
+    # classification there and chat.py awaits it (FR-RTE-03).
+    return asyncio.ensure_future(_run())

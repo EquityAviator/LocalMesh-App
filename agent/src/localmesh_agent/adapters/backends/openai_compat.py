@@ -200,14 +200,28 @@ def chunk_from_sse_data(data: str, backend_id: str = "backend") -> ChatChunk | N
         usage_completion = as_int(usage, "completion_tokens")
     content = delta.get("content")
     role = delta.get("role")
+    # M8 (FR-AGENT-RT): raw tool_calls deltas pass through defensively
+    # (§10.3 rule 2 — never raise on schema drift).
+    raw_tool_calls = delta.get("tool_calls")
+    tool_calls = (
+        tuple(item for item in raw_tool_calls if isinstance(item, dict))
+        if isinstance(raw_tool_calls, list)
+        else None
+    )
     chunk = ChatChunk(
         delta_content=content if isinstance(content, str) else None,
         role=role if isinstance(role, str) else None,
         finish_reason=finish_reason,
         usage_prompt_tokens=usage_prompt,
         usage_completion_tokens=usage_completion,
+        tool_calls=tool_calls,
     )
-    if chunk.delta_content is None and chunk.role is None and chunk.finish_reason is None:
+    if (
+        chunk.delta_content is None
+        and chunk.role is None
+        and chunk.finish_reason is None
+        and not chunk.tool_calls
+    ):
         warn_schema_drift(backend_id, "/v1/chat/completions")
         return None
     return chunk
@@ -341,6 +355,10 @@ class OpenAICompatBackend:
             body["frequency_penalty"] = req.frequency_penalty
         if req.seed is not None:
             body["seed"] = req.seed
+        if req.tools is not None:
+            # M8 (§13.6): tool declarations pass through verbatim; whether the
+            # Backend executes/echoes tool_calls is its own contract.
+            body["tools"] = [dict(tool) for tool in req.tools]
 
         request = self._client.build_request(
             "POST",
