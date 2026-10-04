@@ -1,0 +1,230 @@
+{
+  "capture": {
+    "date_utc": "2026-10-04",
+    "method": "Live HTTP GET of registry JSON APIs (PyPI JSON API, npm registry). Raw responses archived in repo docs/spikes/evidence/raw-2026-10-04/.",
+    "limitations": "GitHub REST API returned HTTP 403 (rate limit exceeded for sandbox egress IPs) for every repository; repo-level activity stats (pushed_at, open issues, latest GitHub release) are therefore NOT captured. Maintenance signals here are registry publish dates and README content only.",
+    "github_api_status": 403
+  },
+  "pypi": {
+    "cryptography": {
+      "version": "50.0.2",
+      "latest_upload_utc": "2026-09-30T14:43:44.339921Z",
+      "license": "Apache-2.0 OR BSD-3-Clause",
+      "requires_python": "!=3.9.0,!=3.9.1,>=3.9",
+      "source_url": "https://pypi.org/pypi/cryptography/json"
+    },
+    "fastapi": {
+      "version": "0.142.2",
+      "latest_upload_utc": "2026-09-30T09:51:09.800102Z",
+      "license": "MIT",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/fastapi/json"
+    },
+    "httpx": {
+      "version": "0.28.1",
+      "latest_upload_utc": "2024-12-06T15:37:21.509172Z",
+      "license": "BSD-3-Clause",
+      "requires_python": ">=3.8",
+      "source_url": "https://pypi.org/pypi/httpx/json"
+    },
+    "import-linter": {
+      "version": "2.15",
+      "latest_upload_utc": "2026-09-04T14:47:54.878239Z",
+      "license": "BSD 2-Clause License",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/import-linter/json"
+    },
+    "keyring": {
+      "version": "25.7.0",
+      "latest_upload_utc": "2025-11-16T16:26:08.402146Z",
+      "license": "MIT",
+      "requires_python": ">=3.9",
+      "source_url": "https://pypi.org/pypi/keyring/json"
+    },
+    "mypy": {
+      "version": "2.4.0",
+      "latest_upload_utc": "2026-10-01T20:39:46.766458Z",
+      "license": "MIT",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/mypy/json"
+    },
+    "nvidia-ml-py": {
+      "version": "13.615.71",
+      "latest_upload_utc": "2026-09-25T15:15:26.540874Z",
+      "license": "BSD",
+      "requires_python": null,
+      "source_url": "https://pypi.org/pypi/nvidia-ml-py/json"
+    },
+    "pip-audit": {
+      "version": "2.10.1",
+      "latest_upload_utc": "2026-06-10T22:17:00.309492Z",
+      "license": " Apache Software License",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/pip-audit/json"
+    },
+    "psutil": {
+      "version": "7.2.2",
+      "latest_upload_utc": "2026-01-28T18:14:57.293384Z",
+      "license": "BSD-3-Clause",
+      "requires_python": ">=3.6",
+      "source_url": "https://pypi.org/pypi/psutil/json"
+    },
+    "pydantic": {
+      "version": "2.13.5",
+      "latest_upload_utc": "2026-08-28T14:03:59.136157Z",
+      "license": "MIT",
+      "requires_python": ">=3.9",
+      "source_url": "https://pypi.org/pypi/pydantic/json"
+    },
+    "pydantic-settings": {
+      "version": "2.15.0",
+      "latest_upload_utc": "2026-08-07T09:24:55.839145Z",
+      "license": "MIT",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/pydantic-settings/json"
+    },
+    "pynvml": {
+      "version": "13.0.1",
+      "latest_upload_utc": "2025-09-05T20:33:24.130567Z",
+      "license": "BSD-3-Clause",
+      "requires_python": ">=3.9",
+      "source_url": "https://pypi.org/pypi/pynvml/json"
+    },
+    "pytest": {
+      "version": "9.1.1",
+      "latest_upload_utc": "2026-06-19T10:58:31.347074Z",
+      "license": "MIT",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/pytest/json"
+    },
+    "pytest-asyncio": {
+      "version": "1.4.0",
+      "latest_upload_utc": "2026-05-26T09:56:02.576082Z",
+      "license": "Apache-2.0",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/pytest-asyncio/json"
+    },
+    "ruff": {
+      "version": "0.16.10",
+      "latest_upload_utc": "2026-10-01T18:02:36.072842Z",
+      "license": "MIT",
+      "requires_python": ">=3.7",
+      "source_url": "https://pypi.org/pypi/ruff/json"
+    },
+    "setuptools": {
+      "version": "84.0.0",
+      "latest_upload_utc": "2026-08-08T18:27:56.719708Z",
+      "license": "MIT",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/setuptools/json"
+    },
+    "uvicorn": {
+      "version": "0.54.0",
+      "latest_upload_utc": "2026-09-25T06:52:35.829563Z",
+      "license": "BSD-3-Clause",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/uvicorn/json"
+    },
+    "zeroconf": {
+      "version": "0.151.5",
+      "latest_upload_utc": "2026-09-28T14:57:51.803163Z",
+      "license": "LGPL-2.1-or-later",
+      "requires_python": ">=3.10",
+      "source_url": "https://pypi.org/pypi/zeroconf/json"
+    }
+  },
+  "npm": {
+    "@op-engineering/op-sqlite": {
+      "latest_version": "18.2.5",
+      "latest_publish_utc": "2026-09-20T14:40:02.773Z",
+      "license": "MIT",
+      "deprecated": null,
+      "peer_dependencies": {
+        "react": "*",
+        "react-native": "*",
+        "@sqlite.org/sqlite-wasm": "*"
+      },
+      "source_url": "https://registry.npmjs.org/@op-engineering/op-sqlite"
+    },
+    "expo": {
+      "latest_version": "57.0.26",
+      "latest_publish_utc": "2026-09-29T10:57:08.644Z",
+      "license": "MIT",
+      "deprecated": null,
+      "peer_dependencies": {
+        "react": "*",
+        "react-dom": "*",
+        "react-native": "*",
+        "react-native-web": "*",
+        "@expo/dom-webview": "*",
+        "@expo/metro-runtime": "*",
+        "react-native-webview": "*"
+      },
+      "source_url": "https://registry.npmjs.org/expo"
+    },
+    "react-native-quick-sqlite": {
+      "latest_version": "8.2.7",
+      "latest_publish_utc": "2024-11-26T16:44:39.009Z",
+      "license": "MIT",
+      "deprecated": "Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.",
+      "peer_dependencies": {
+        "react": ">=17.0.0",
+        "react-native": ">=0.74.0"
+      },
+      "source_url": "https://registry.npmjs.org/react-native-quick-sqlite"
+    },
+    "react-native-sqlcipher-storage": {
+      "latest_version": "0.0.3",
+      "latest_publish_utc": "2019-01-24T08:56:15.465Z",
+      "license": "MIT",
+      "deprecated": null,
+      "peer_dependencies": {
+        "react-native": ">=0.40.0"
+      },
+      "source_url": "https://registry.npmjs.org/react-native-sqlcipher-storage"
+    },
+    "react-native-sse": {
+      "latest_version": "1.2.1",
+      "latest_publish_utc": "2024-03-05T10:37:27.135Z",
+      "license": "MIT",
+      "deprecated": null,
+      "peer_dependencies": null,
+      "source_url": "https://registry.npmjs.org/react-native-sse"
+    },
+    "react-native-zeroconf": {
+      "latest_version": "0.17.3",
+      "latest_publish_utc": "2026-10-04T01:10:47.518Z",
+      "license": "MIT",
+      "deprecated": null,
+      "peer_dependencies": {
+        "react": "*",
+        "react-native": ">=0.60"
+      },
+      "source_url": "https://registry.npmjs.org/react-native-zeroconf"
+    }
+  },
+  "readme_evidence": {
+    "op-sqlite": {
+      "file": "readme-op-sqlite.md",
+      "url": "https://raw.githubusercontent.com/OP-Engineering/op-sqlite/main/README.md",
+      "key_quote": "SQLCipher is supported as a compilation target (README line 20 at capture)",
+      "android_16_17_evidence": "none stated in README"
+    },
+    "react-native-zeroconf": {
+      "file": "readme-react-native-zeroconf.md",
+      "url": "https://raw.githubusercontent.com/Apercu/react-native-zeroconf/master/README.md",
+      "android_16_17_evidence": "none stated in README (no targetSdk/Android-16/17 mentions at capture)"
+    },
+    "react-native-sse": {
+      "file": "readme-react-native-sse.md",
+      "url": "https://raw.githubusercontent.com/binaryminds/react-native-sse/master/README.md",
+      "key_quote": "We are using Server-Sent Events as a convenient way of establishing and handling Mercure connections... import EventSource from 'react-native-sse'",
+      "android_16_17_evidence": "none stated in README"
+    },
+    "expo-fetch": {
+      "file": "expo-docs-expo-fetch.html",
+      "url": "https://docs.expo.dev/versions/latest/sdk/expo/",
+      "key_finding": "'expo/fetch' appears 8 times on the current SDK index docs page (SDK 57 era); no fetch.EventSource API found on that page"
+    }
+  }
+}
