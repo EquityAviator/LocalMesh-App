@@ -384,3 +384,46 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 全绿�
 5. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale 三类，阻塞 contract tests 硬门）、ADR-017、QUESTION-101..105。
 6. 真实 GPU 主机上的 NvmlGpuProbe 行为（VRAM/util/temp）未验证 [Not verified]——沙箱无 NVIDIA 驱动，探针按 §21.2 optional 设计降级为 []。
 7. 注：本沙箱会在会间把 HEAD 切回 main，本轮提交直接落在 main。
+
+---
+Task ID: 16 — webDevReview round 7 (3 QA fixes + WP-15 part 2: load/unload + keep-warm, M5 收官)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：修 3 个真 bug + WP-15 part 2）。
+
+项目状态判断:
+- QA 发现并修复 3 个真实问题（commits 731393a + 61156fe）：
+  1. **pytest_layer.sh 解释器解析**：从仓库根以 CI 风格运行 `bash scripts/pytest_layer.sh` 时 PATH 解析到沙箱全局 venv 的 pytest（缺 zeroconf 等 Agent 依赖）→ test_mdns.py 6 errors（Task 13 的 sys.path 修复只解决了 import 锚定，没锁解释器）。修复：脚本优先用 `agent/.venv/bin/pytest`（存在时），CI 无此 venv 行为不变。修复后四层全绿（unit 209 / contract 3 announced skips / integration 48 / security 8）。
+  2. **pynvml 上游弃用**：运行时 FutureWarning "The pynvml package is deprecated. Please install nvidia-ml-py instead." —— 正好触发 WP-02 报告预登记的 M5 决策规则（"If M5 finds nvidia-ml-py is the better-supported distribution, switching = new dependency → ADR at that time"）。按治理流程：**ADR-018**（Proposed）+ nvidia extra 切换到 nvidia-ml-py==13.615.71（WP-02 采证的同一版本；两个包都提供 `pynvml` 模块 → 运行时/测试代码零改动）+ 锁文件最小 diff（-pynvml、nvidia-ml-py via 改为 pyproject；版本集经无约束 uv 重编译验证完全一致 + hash dry-run 校验）+ ADR 索引 + WP-02 报告补状态注记。19/19 探针测试通过、FutureWarning 消失。
+  3. **仪表盘移动端横向溢出**：agent-browser 390px 视口实测 `document.scrollWidth=549`（应 390）。根因：页面响应式网格只有 `lg:grid-cols-5`/`md:grid-cols-2` 类，移动端隐式 auto 轨道被内容 min-content 撑爆（TC-SEC-10 行的 truncate nowrap `where` 文本实测 min-content 531px）。修复：5 处网格补 `grid-cols-1`（Tailwind = minmax(0,1fr)，轨道封顶容器宽，既有 min-w-0+truncate 链正确省略号）。实测 390px sw=390、1280px 五列布局不变。
+- 其余 QA 全绿：dev.log 全 200、console 零错误、过滤 chips/行展开/Refresh 实测通过、Python 全量 gate 绿。→ 修复后推进 WP-15 part 2。
+
+本轮完成 (WP-15 part 2, commit 649cd8f + dashboard 21b08f9, 均落 main):
+- **API-MODEL-02/03**（§13.2, FR-MOD-04）`POST /mesh/v1/models/load|unload`：
+  - Bearer + `models:manage`（§13.2 API 表；集成测试含窄 scope 403 FORBIDDEN_SCOPE、无 token 401）。
+  - 体 `{mesh_model_id}` 经 `validate_model_ref_payload`（core/policy.py，allow-list 拒未知字段 → 422 INVALID_REQUEST §13.4 envelope；JSON 解析失败同样 422 而非 500）。
+  - 202 `{"state":"loading"}`（逐字）；unload 返回镜像 `{"state":"unloaded"}` —— **QUESTION-106 登记**（规格单行只给了 load 状态；§13.5 封闭词表存在即为此用；若 owner 推翻是一行 diff）。
+  - 404 MODEL_NOT_FOUND（复用 Router.resolve 的 §14.3 first-"::" 解析）；501 UNSUPPORTED_CAPABILITY（§10.2 基类契约 —— Ollama 无显式 load，§10.3 表）；适配器的 BACKEND_* 错误照 §10.3 rule 3 映射，绝不透传 raw body。
+  - 不加限流（§13.8 穷举且无此二路由行，与 /device 同一读法，docstring 记录）。
+- **KeepWarmScheduler**（`core/warm.py`，§16.5, FR-MOD-05）：
+  - 暖集**仅**来自 `models.overrides[].keep_warm = true`（Appendix E 默认 false；调度器收解析好的 id 集，不 import config 类型，§10.1）。
+  - interval = min(backend_idle_unload/2, 240 s)（§16.5 逐字公式；[DESIGN] idle=300s 按 §6.2 [SRC] Ollama 默认 idle-unload ≈5min，常量非 Appendix E 键）。
+  - 只 ping 声明 keep_warm cap 的 Backend（§10.3 表：仅 Ollama 原生 /api/chat 空 messages ping；LM Studio keep-warm n/a 永不 ping —— 即使 override=true，防"静默保温"）。
+  - **设备活动门**：≥1 个非吊销设备 last_seen_at 在 60 分钟内（§14.1，app.py 谓词过滤 revoked 行）→ 否则整轮 no-op（"Never keeps models warm silently otherwise"）。
+  - ping 失败（BACKEND_UNAVAILABLE 等 MeshError）→ allow-list 键日志降级、pass 继续（CI-21 缓解项，非正确性路径）；Clock 可注入；[DESIGN] 启动即首轮 ping（冷 Agent 不该让活跃设备吃冷启动 TTFT）；§10.6 顺序：registry warm 后 start，shutdown 对称 stop。
+- **Fake Ollama 动态内存状态**（tools/fake-backends）：`in_memory` 服务器级实例状态 —— 空 messages 的 /api/chat 判定为 keep-warm ping（模型入内存集 + `warm_pings` 计数，/api/ps 可观察）；chat demand-load（镜像真实行为；keep_alive on /v1 仍 [UNVERIFIED] §6.2 按安全假设忽略）；每实例独立状态。Fake LM Studio 已有 load/unload + loaded_models（WP-03 预铺）未动。
+- 测试 +33：unit 12（调度器：interval 公式/候选门（无 override、无 cap、无 backend）/活动窗 60min 边界/吊销设备不保温/失败降级继续/start-stop 幂等 + [DESIGN] 首轮 ping 钉住）+ policy 6（model_ref 校验全分支）+ integration 11（真实 app + 双 fake + lifespan：202/404/501/422/401/403、§13.3 头、fake 状态翻转、**LM Studio registry state 停留 unknown**（§6.1 loaded 标志 UNVERIFIED —— 不猜，钉住该契约直到 fixtures）、keep-warm 经 app 装配真实 tick 打到 fake 并经 /api/ps 观察）+ fake-backends 4（16/16 ollama 文件级）。
+- OpenAPI 12 paths（+load/unload），drift OK。
+- **真实进程 TLS token 路径冒烟**（dev-insecure 绕过 token 不算数 —— QUESTION-105 行为再次确认）：store 直插 manage-scope 设备 + TokenService 签发 → curl -k https：202 loading / fake 状态翻转 / 404 / 501 / 422 / 202 unloaded / 401 全分支符合规格；keep-warm 在无活跃设备时 0 ping（真实进程验证"静默"约束）。
+- 仪表盘（21b08f9）：WP-15 (part 2) 行、新 gate 行（Model load/unload + keep-warm）、Mesh API surface 10→12 行（load/unload 带 models:manage chip + QUESTION-106 徽记）、QUESTION-106 + ADR-018 卡片、M5 详情改"Agent side COMPLETE"、pytest 297 collected、next steps 重写（Agent 侧 M2–M5 完结 → M6+ 需 owner 重规划）。
+- agent-browser 复验：all16/done13 chips、行展开（649cd8f 注记）、/models/load 面板行、QUESTION-106/ADR-018 卡、桌面+移动零 console 错误、390px 无横向溢出（回归通过）。
+
+验证结果:
+- merged main = 21b08f9（731393a → 61156fe → 649cd8f → 21b08f9）。gate 全绿：ruff/format PASS（88 files）、mypy --strict PASS（15 files, CI scope core+security）、pytest 294 passed + 3 announced skips、fake backends 31/31、import-linter 3/3 KEPT、OpenAPI drift OK（12 paths）、3 security scans PASS、bun lint clean、agent-browser 桌面 1280 + 移动 390 + 交互复验通过（console 零错误、无横向溢出）。
+- 已知非阻塞项：全 src 范围 mypy 2.4.0 在 CI 范围外文件报 26 处（库版本签名变化 + 类型收窄；§21.2 只要求 core/security；运行时有 pydantic 校验兜底，非真实 bug）——建议未来作为 owner 决策扩范围或加 per-module overrides，未自行扩（避免擅自改 CI 契约）。
+
+未解决问题/风险，下一阶段建议:
+1. **Agent 侧 M2–M5 全部完成**。剩余 WP（09/10/11-App/12/13-App）需 Android/Gradle 环境；WP-16+ 按 §22.2 "M6–M9 packages are defined when each milestone starts" 等 owner 重规划；M6 Control Plane 可选、门在 Q-05。
+2. 沙箱可做的硬化候选：TC-SEC-10 pytest 化（TLS 1.3-only 自动化条目，替代 smoke 状态）；§19.1 benchmark 骨架（数字需真实 Backends）；keep-warm 与 chat mesh.meta 的 CI-21 e2e 串联；全 src mypy 范围决策落地。
+3. QUESTION-106（新）：unload 响应体状态；ADR-018（新）：nvidia-ml-py 审批；QUESTION-103 剩余 wire-format items 1-2 + operator 路由命名；QUESTION-104 等 tailscale 采集；QUESTION-105 dev token 豁免。
+4. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale，阻塞 contract tests 硬门）、ADR-017/018 审批、QUESTION-101..106。
+5. 沙箱注：本沙箱会在会间把 HEAD 切回 main，本轮提交直接落在 main；`agent/.venv` 与新锁文件已同步（nvidia-ml-py 13.615.71）。
