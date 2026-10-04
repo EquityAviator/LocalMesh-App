@@ -2,7 +2,7 @@
 
 Covers: migration application and drift guard, WAL, identity, devices, tokens,
 audit (deny-by-default vocabulary + meta allow-list), settings, model cache,
-and §14.1 retention.
+and §14.1 retention. The `store` fixture lives in tests/unit/conftest.py.
 """
 
 import json
@@ -19,13 +19,6 @@ from localmesh_agent.store.sqlite import (
     Store,
     StoreError,
 )
-
-
-@pytest.fixture()
-def store(tmp_path: Path) -> Store:
-    s = Store(tmp_path / "agent.db")
-    yield s
-    s.close()
 
 
 def test_migration_applies_schema_verbatim(store: Store) -> None:

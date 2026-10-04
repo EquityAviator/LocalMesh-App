@@ -45,6 +45,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+asyncio_mode = "auto"        # WP-05/06: async adapters, registry, SSE tests
 
 [tool.mypy]
 strict = true                # §21.2: mypy --strict on core/ and security/ (paths passed by CI)
