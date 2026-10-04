@@ -345,3 +345,42 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 全绿�
 5. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale 三类）、ADR-017、QUESTION-101/102/103/104。
 6. tailscale 实机行为（CLI 输出形状、DERP path 字段 CI-16）待真实安装验证 [Not verified]。
 7. 注：本沙箱会在会间把 HEAD 切回 main，本轮提交直接落在 main。
+
+---
+Task ID: 15 — webDevReview round 6 (WP-15 part 1: HardwareProbe + /device, M5)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 全绿无 bug → WP-15 part 1 Agent 侧）。
+
+项目状态判断:
+- QA 全绿：dev.log 全 200；Python gate（ruff/format PASS、mypy --strict PASS、pytest 239 passed + 3 skips、import-linter 3/3、drift OK、3 scans、fake backends 27/27）；agent-browser 桌面 1280 + 移动 390 渲染正常、console 零错误、过滤 chips（planned=3）/行展开/Refresh 实测通过。无 bug → 按上轮建议推进 M5：WP-15 part 1（Agent 侧）。
+
+本轮完成 (WP-15 part 1, commit 3576fdf, 落 main；dashboard 为 d7b752a):
+- `adapters/hardware/psutil_probe.py`：
+  - `PsutilHardwareProbe` 实现 §10.2 `HardwareProbe` 端口：OS family/version（platform，小写映射 §13.2 例 "windows"）、CPU model（platform.processor() + Linux /proc/cpuinfo "model name" 回退——读 OS 上报值而非猜测；全部来源缺失 → None）、logical_cores/RAM total/available（psutil）。
+  - FR-STAT-01 逐字段防御：每个属性读独立 try → 该字段 None（§13.2 "MUST NOT fill unknowns with defaults"）；整个 snapshot 永不 raise。
+  - §10.5 真超时语义：`asyncio.wait(..., timeout=2s)` 包 `run_in_executor`——worker 线程不可取消，超时即放弃（迟到结果丢弃），调用方等待被硬性限界（`wait_for`+`to_thread` 做不到：await 会一直骑到线程结束，已用测试证实并记录）。psutil/platform/cpuinfo_reader 全部可注入（§10.2 tests intent）。
+  - `CompositeHardwareProbe`：base + GPU lister 合成，各部分独立降级（GPU 探针挂了 OS/CPU/RAM 字段存活）。
+- `adapters/hardware/nvidia_probe.py`：`NvmlGpuProbe`（§21.2 optional pynvml）——import/init 失败 → `()`（绝不编造 GPU 条目）；逐字段 NVMLError 降级（NotSupported → 该字段 None 其余存活）；pynvml ≥11 str 名与旧版 bytes 名都接受；init 成功才配对 shutdown；2s wait 超时 → ()。
+- `api/v1/device.py` — API-DEV-01 正式上线（§13.2 verbatim 形状）：
+  - Bearer + `models:read` scope（§13.2 API 表）；OS/CPU/RAM/GPU pydantic 模型全 nullable。
+  - `network.lan_addresses` 复用 §16.2 接口选择（与 mDNS 广播同一地址源，to_thread 包阻塞解析）；`network.tailnet` 镜像 WP-14 startup 探针（absent → null）。
+  - `gpus` 无检测时为 `[]`——全 null 的 GPU 条目等于编造 GPU 存在（模块 docstring 记录该读法）。
+  - 无限流：§13.8 穷举列出限额且无 /device 行，不自行加（docstring 说明）。
+- app.py 装配：`app.state.hardware = Composite(Psutil, (Nvml,))`；device router 注册（§13.1 第 10 条公网路由）。
+- OpenAPI：export 脚本 include device router → mesh-v1.json 10 paths；drift OK。
+- 测试 +26：unit 19（/proc/cpuinfo 解析、全映射、unknown→null、逐字段降级、psutil/platform 全爆→全 None、真超时（量 caller 侧等待，非 asyncio.run teardown 的 executor join——测试曾据此误报已修）、NVML 双卡+bytes 名+NotSupported、init 失败/ import 失败/0 卡/枚举错、超时→()、Composite 合成/独立降级/协议符合性）+ integration 7（真实 app token 模式：200 全键集断言（§13.2 verbatim）+ 私网地址 + 无 tailnet null、401 AUTH_REQUIRED/垃圾 token AUTH_FAILED、窄 scope 403 FORBIDDEN_SCOPE（直接 store.upsert_device 建行——upsert 不改 scopes，DeviceService.create 恒默认 scope，测试先踩坑后修正）、吊销 401、tailnet block 直通、探针爆炸仍 200 全 null（FR-STAT-01））。
+- 真实进程冒烟：dev-insecure loopback 起 uvicorn，curl /mesh/v1/device 实体 = §13.2 精确形状（linux/5.10.134、Xeon、2 cores、4GB RAM、gpus []、tailnet null）。
+- **QUESTION-105 登记**（docs/OPEN_QUESTIONS.md）：冒烟发现 CLI dev 横幅写 "token auth ON" 但 deps.py 在 dev-insecure 下绕过 token（M1 兼容 per-process Device）——§17.9 只规定 loopback+cleartext，未说 token 豁免。规格未明 → 不猜：横幅改为如实描述（"token auth BYPASSED — QUESTION-105"），行为不动等 owner 裁决；生产 TLS 监听不受影响（恒 token 强制）。
+- 仪表盘（d7b752a）：WP-15 part 1 done 行（3576fdf）、M5 in-progress（第 4 个 active 里程碑）、新增 "Hardware probe + /device" gate 行、pytest 268 collected、QUESTION-105 卡片置顶、next steps → WP-15 part 2（/models/load|unload + keep-warm，FR-MOD-04/05，fake backends 需扩展 load/unload/keep_warm 行为——沙箱可做）；**新面板 "Mesh API surface (§13.1 · §13.2)"**：10 条端点行（GET/POST/DELETE 彩色方法 chip + hover scale、mono 路径、token/no-auth 徽章 + KeyRound 图标、scope chip、API-ID 徽章、/device 行 emerald 高亮 + Sparkles "new" 徽章、注记右对齐 truncate、底部 auth 注记）——桌面/移动均复验渲染正常（移动端 flex-wrap 堆叠）；"Next milestone" 标题更新为 M5/M2-M4；lint clean。
+
+验证结果:
+- merged main = d7b752a（WP-15 3576fdf + dashboard）。gate 全绿：ruff/format PASS、mypy --strict PASS（14 files）、pytest 265 passed + 3 announced skips、import-linter 3/3 KEPT、OpenAPI drift OK（10 paths）、3 security scans PASS、fake backends 27/27、bun lint clean、agent-browser 桌面+移动+新面板复验通过（console 零错误）。
+
+未解决问题/风险，下一阶段建议:
+1. **下一沙箱增量 = WP-15 part 2（M5, FR-MOD-04/05）**：`POST /models/load|unload`（202 loading；501 UNSUPPORTED_CAPABILITY——LM Studio 原生 [VERIFIED]；404 MODEL_NOT_FOUND）+ keep-warm（Ollama keep_alive）。需要先给 fake backends 扩展 load/unload/keep_warm 能力位与行为（fake_core caps 补 load_unload/keep_warm），沙箱可完整实现+测试。
+2. QUESTION-105（新）：dev-insecure 是否豁免 Device Token——owner 确认；若要求 token 强制，改动局部（deps.py dev 分支 + M1 测试适配）。
+3. QUESTION-103 剩余 OPEN 项：wire-format items 1-2 + operator 路由命名；QUESTION-104 等 tailscale 采集。
+4. WP-09/WP-10/WP-12(App)/WP-13(App) 需 Android/Gradle 环境 → M2-M4 的 App 侧收尾依赖 owner 环境；Agent 侧 M2/M3/M4 + M5 part 1 已完整。
+5. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale 三类，阻塞 contract tests 硬门）、ADR-017、QUESTION-101..105。
+6. 真实 GPU 主机上的 NvmlGpuProbe 行为（VRAM/util/temp）未验证 [Not verified]——沙箱无 NVIDIA 驱动，探针按 §21.2 optional 设计降级为 []。
+7. 注：本沙箱会在会间把 HEAD 切回 main，本轮提交直接落在 main。
