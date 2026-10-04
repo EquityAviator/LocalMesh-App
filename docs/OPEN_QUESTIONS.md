@@ -23,6 +23,10 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
 ## QUESTION-103 — WP-08 underspecified protocol/admin-surface details
 - Date: 2026-10-04
 - Raised by: WP-08 (pairing/auth/admin implementation)
+- Implementation note (2026-10-04, WP-11): item 5 is now implemented — the QR
+  `ep` list leads with `https://<lan-ip>:<listen.port>` resolved via the §16.2
+  interface selection (hostname form kept as fallback). The wire-format items
+  1-4 remain OPEN pending owner confirmation.
 - Question: LM-ARCH-001 leaves several WP-08 details open. Please confirm (or
   correct) the interpretations shipped with WP-08:
   1. **HMAC framing of string IDs** (§13.2): `agent_id`/`pair_id`/`device_id`/
