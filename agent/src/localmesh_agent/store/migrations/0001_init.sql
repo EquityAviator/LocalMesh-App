@@ -1,0 +1,4 @@
+-- LM-ARCH-001 §14.1 migration 0001_init.sql (Agent store, SQLite WAL).
+-- M0 scaffold: intentionally empty; the schema is delivered with WP-04 (M1).
+-- NOTE: the Content-column schema scan (scripts/security/scan_content_columns.py)
+-- gates every future migration (SEC-N3, ADR-011: the Agent stores no Content).

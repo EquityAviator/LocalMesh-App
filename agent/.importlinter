@@ -1,0 +1,44 @@
+# Import-linter contracts enforcing the LM-ARCH-001 §10.1 dependency rule:
+#   api -> core -> ports ; adapters -> ports/core ;
+#   core imports nothing from api / adapters implementations / store;
+#   core imports no fastapi/httpx/sqlite3/psutil.
+# (AGENTS.md Architecture rules; §10.1 "Dependency rule (enforced by an
+# import-linter test)". The pytest wrapper lives in
+# agent/tests/unit/test_dependency_rule.py.)
+
+[importlinter]
+root_package = localmesh_agent
+include_external_packages = True
+
+[importlinter:contract:api-core-ports-layers]
+name = Layer rule: api -> core -> ports (LM-ARCH-001 §10.1)
+type = layers
+layers =
+    localmesh_agent.api
+    localmesh_agent.core
+    localmesh_agent.adapters.ports
+
+[importlinter:contract:core-no-frameworks]
+name = core imports no fastapi/httpx/sqlite3/psutil (LM-ARCH-001 §10.1)
+type = forbidden
+source_modules =
+    localmesh_agent.core
+forbidden_modules =
+    fastapi
+    httpx
+    sqlite3
+    psutil
+
+[importlinter:contract:core-independent-of-implementations]
+name = core imports nothing from api / store / adapter implementations (LM-ARCH-001 §10.1)
+type = forbidden
+source_modules =
+    localmesh_agent.core
+forbidden_modules =
+    localmesh_agent.api
+    localmesh_agent.store
+    localmesh_agent.adapters.backends
+    localmesh_agent.adapters.hardware
+    localmesh_agent.adapters.discovery
+    localmesh_agent.adapters.tailscale
+    localmesh_agent.adapters.keyring_store

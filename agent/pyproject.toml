@@ -1,0 +1,62 @@
+[project]
+name = "localmesh-agent"
+version = "0.1.0"
+description = "LocalMesh AI Desktop Agent — Mesh API service exposing local inference Backends (LM-ARCH-001)"
+requires-python = ">=3.12"
+# NOTE: no `license` field yet — project license is an open owner decision (Q-08).
+dependencies = [
+    # §21.2 technology baseline. Names only here: exact versions are pinned in
+    # agent/requirements.txt, generated FROM THE REGISTRY at M0 (WP-02) and
+    # committed per §17.11. Never type versions from memory (AGENTS.md).
+    "fastapi",              # ADR-002
+    "uvicorn",              # ADR-002
+    "httpx",                # ADR-002 (async)
+    "pydantic>=2,<3",       # Pydantic v2 is contractual (ADR-002)
+    "pydantic-settings",    # §10.1 config.py
+    "cryptography",         # §21.2; used by security/tls.py, security/crypto.py
+    "zeroconf",             # python-zeroconf (§21.2); PyPI distribution name confirmed by WP-02
+    "psutil",               # §21.2
+    "keyring",              # §21.2
+]
+
+[project.optional-dependencies]
+nvidia = [
+    "pynvml",               # optional per §21.2; final distribution name decided by the WP-02 spike
+]
+dev = [
+    "ruff",                 # §21.2 agent tooling
+    "mypy",                 # §21.2 (mypy --strict on core/ and security/)
+    "pytest",               # §21.2
+    "pytest-asyncio",       # §21.2
+    "import-linter",        # §21.2 (dependency rule §10.1)
+    "pip-audit",            # §21.4 security gates, §17.11
+]
+
+[build-system]
+# ADR-017 (docs/adr/017-python-build-backend.md) — Proposed, pending owner
+# approval: a PEP 517 build backend is required to install the Agent package;
+# setuptools chosen per CON-05 ("boring, well-documented tech").
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+strict = true                # §21.2: mypy --strict on core/ and security/ (paths passed by CI)
+python_version = "3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["localmesh_agent"]
