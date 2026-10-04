@@ -20,12 +20,14 @@ import {
   GitCommitHorizontal,
   KeyRound,
   Network,
+  Radio,
   ScanSearch,
   ShieldCheck,
   Sparkles,
   Stethoscope,
   Timer,
   TriangleAlert,
+  Waves,
   Wifi,
 } from "lucide-react";
 
@@ -132,6 +134,18 @@ interface Round {
   delivered: string;
   next: string;
 }
+interface StreamPhase {
+  id: string;
+  name: string;
+  emits: string[];
+  budget: string;
+  note: string;
+}
+interface StreamLifecycle {
+  specRef: string;
+  fixedThisRound: string;
+  phases: StreamPhase[];
+}
 interface StatusPayload {
   project: string;
   governingSpec: string;
@@ -143,6 +157,7 @@ interface StatusPayload {
   openQuestions: OpenQuestion[];
   nextSteps: string[];
   perfBudgets: PerfBudgets;
+  streamLifecycle?: StreamLifecycle;
   round?: Round;
   meshApi: MeshApiSection;
   doctor: DoctorSection;
@@ -889,6 +904,139 @@ export default function Home() {
                 </CardContent>
               </Card>
             </motion.section>
+
+            {/* SSE stream lifecycle (§13.7 · §10.3 rule 4) — CI-18/21 hardening */}
+            {data.streamLifecycle && (
+              <motion.section
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.28 }}
+                aria-labelledby="stream-h"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2
+                    id="stream-h"
+                    className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    <Waves className="h-3.5 w-3.5" aria-hidden /> SSE stream
+                    lifecycle (§13.7 · §10.3 rule 4)
+                  </h2>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {data.streamLifecycle.phases.length} phases · CI-18/21
+                    hardened this round
+                  </span>
+                </div>
+                <Card className="transition-shadow hover:shadow-md">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+                      Wire contract of
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                        POST /chat/completions
+                      </code>
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                      >
+                        <Sparkles className="h-2.5 w-2.5" aria-hidden /> fixed
+                        this round
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {data.streamLifecycle.specRef}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="rounded-none bg-amber-500/5 px-4 py-2.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                      <span className="font-semibold">What changed: </span>
+                      {data.streamLifecycle.fixedThisRound}
+                    </div>
+                    <ol className="relative divide-y divide-border">
+                      {data.streamLifecycle.phases.map((phase, idx) => {
+                        const isWaiting = phase.id === "queued" || phase.id === "loading";
+                        const isError = phase.id === "error";
+                        const PhaseIcon =
+                          phase.id === "queued"
+                            ? Clock
+                            : phase.id === "meta"
+                              ? BadgeCheck
+                              : phase.id === "loading"
+                                ? Radio
+                                : phase.id === "streaming"
+                                  ? Activity
+                                  : phase.id === "stats"
+                                    ? Gauge
+                                    : TriangleAlert;
+                        const nodeTone = isError
+                          ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
+                          : isWaiting
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                        return (
+                          <li
+                            key={phase.id}
+                            className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+                          >
+                            <span
+                              className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-transform group-hover:scale-110 ${nodeTone}`}
+                              aria-hidden
+                            >
+                              <PhaseIcon className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="font-mono text-[10px] text-muted-foreground/70">
+                                  {String(idx + 1).padStart(2, "0")}
+                                </span>
+                                <p className="text-xs font-semibold text-foreground">
+                                  {phase.name}
+                                </p>
+                                {phase.emits.map((e) => (
+                                  <Badge
+                                    key={e}
+                                    variant="outline"
+                                    className="shrink whitespace-normal break-words text-left border-border bg-muted font-mono text-[9px] text-muted-foreground"
+                                  >
+                                    {e}
+                                  </Badge>
+                                ))}
+                              </div>
+                              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] leading-relaxed text-muted-foreground">
+                                <Timer
+                                  className="h-2.5 w-2.5 shrink-0"
+                                  aria-hidden
+                                />
+                                <span className="font-mono text-[9px] text-foreground/70">
+                                  {phase.budget}
+                                </span>
+                                <span aria-hidden>·</span>
+                                <span className="min-w-0 break-words">
+                                  {phase.note}
+                                </span>
+                              </p>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </CardContent>
+                  <CardContent className="flex items-start gap-2 border-t border-dashed border-border px-4 py-2.5 text-[10px] leading-relaxed text-muted-foreground">
+                    <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                    <span>
+                      Every mid-stream failure ends with a terminal
+                      <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[9px]">
+                        mesh.error
+                      </code>
+                      — never a hang (NFR-REL-02). The phone treats ≥ 45 s of
+                      silence as a dead stream (CI-18); the 15 s keepalives
+                      during queue + cold-load waits exist to prevent exactly
+                      that (CI-21). Verified by tests/integration/
+                      test_stream_robustness.py + tests/unit/
+                      test_stream_timeouts.py.
+                    </span>
+                  </CardContent>
+                </Card>
+              </motion.section>
+            )}
 
             {/* Connection ladder & doctor (§18.1 · §18.4, WP-13 agent side) */}
             <motion.section
