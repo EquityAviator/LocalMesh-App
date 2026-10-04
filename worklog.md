@@ -210,3 +210,40 @@ Task: 状态判断 + QA + 自选开发重点（WP-07 TLS identity）。
 2. TLS 1.3 uvicorn 公网监听集成（与 WP-08 一起做才有意义——无 token 时公网端点全部 401）。
 3. Owner actions 不变：fixtures 采集（阻塞 contract tests）、ADR-017、QUESTION-101/102 确认。
 4. cryptography 50.x API 备注：`get_values_for_type` 直接返回原始值；NameAttribute.value 可为 bytes（mypy strict 下需收窄）。
+
+---
+Task ID: 11 — webDevReview round 2 (WP-08)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + agent-browser QA + 自选开发重点（WP-08 配对/认证/管理面）。
+
+项目状态判断:
+- QA 全绿：Python gate（ruff / ruff format / mypy --strict 14 files / pytest 102 passed + 2 announced skips / import-linter 3/3 KEPT / OpenAPI drift OK / 3 security scans / fake backends 27/27）；agent-browser 仪表盘复验（桌面 1280px + 移动 390px 渲染正常、console 零错误、dev.log 200s）。无 bug → 按稳定阶段推进新需求：M2 主体 WP-08。
+
+本轮完成 (WP-08, commit d74f25f, 分支指针 wp-08-pairing-auth=d74f25f):
+- security/crypto.py：LP() 4B-BE 长度成帧、pairing/status proof、SAS 推导（mod 1e6 零填充 6 位）、ECDSA P-256/SHA-256/DER 验签（拒绝非 P-256）、hmac.compare_digest 恒时比较、b64url 无填充编解码（拒绝标准 Base64，Appendix C trap）。
+- security/pairing.py：SM-PAIR 状态机（CLOSED/OPEN/CLAIMED/APPROVED/DENIED/EXPIRED/LOCKED, §15.2 verbatim）；QR payload（§17.4 localmesh://pair?v=1&aid&n&fp&pid&sec&ep）；5 次坏 proof → LOCKED + 15min 冷却（§13.8）；TTL 300s（配置 ≤600, FR-PAIR-02）+ 过期墓碑 → 410（FR-PAIR-02 AC）；CLAIMED 120s 超时（FR-PAIR-04）；require_confirmation=false 自动批准；单一活跃会话；secret 仅内存、绝不落盘/日志（§17.6）。
+- security/tokens.py：32B CSPRNG → b64url token（43 字符），只存 SHA-256 hash（§14.1/§10.4），TTL 900s；verify 三态区分 TOKEN_EXPIRED（401 可重试）vs AUTH_FAILED（401 统一，吊销删 hash 后不可区分，§17.8）。
+- security/devices.py：DeviceService（create dv_+UUIDv7、scopes "models:read chat"）；revoke 风暴 = 删 token hash → set revoked_at（行保留, §14.1）→ Scheduler.cancel_by_device（§10.4/§15.6）→ audit device_revoked；内存 live-revoked 集合供 SSE 每块检查（FR-PAIR-06 ≤5s）。
+- security/ratelimit.py：滑动窗口限流器；/info 30/min/IP、/auth/challenge 10/min per IP AND per device_id（§13.8）。
+- api/v1/pair.py：API-PAIR-01（202 awaiting_confirmation；409/403/410/429 按 Appendix D）+ API-PAIR-02（approved 时才带 device_id/endpoints, §13.2）。
+- api/v1/auth.py：API-AUTH-01（未知 device_id 也返回挑战 — anti-enumeration；挑战单次使用 30s）+ API-AUTH-02（消息 "localmesh-auth-v1\n..."（nonce 为 b64url 字符串, QUESTION-103）；401 统一 AUTH_FAILED；DEVICE_REVOKED 仅在有效签名之后（§13.2）；成功 → touch last_seen + audit auth_ok）。
+- api/v1/info.py：API-INFO-01 正式上线（schema-only → 服务；pairing_open 反映"可接受新 claim"）。
+- deps.py：Bearer token 认证路径（fail-closed SEC-N4；缺头 AUTH_REQUIRED / 未知 AUTH_FAILED / 过期 TOKEN_EXPIRED）；dev-insecure 路径保留（M1 测试兼容）。
+- admin_app.py（ADR-014）：127.0.0.1:8444 HTTP；per-install admin.token（0600, §17.6）；严格 Host 检查（anti DNS-rebinding, TC-SEC-06）；无 CORS；token 仅 Authorization 头 + 恒时比较（拒绝 query string）；路由：POST /admin/pair/open|approve|deny|close、GET /admin/pair/pending（CLAIMED 时回 SAS）、GET /admin/devices（不暴露 DER 公钥）、POST /admin/devices/{id}/revoke（返回 cancelled_requests）、POST /admin/tls/rotate（§17.5 显式轮换）。
+- app.py：装配 PairingService/TokenService/DeviceService/ChallengeStore/limiter；include info/pair/auth 路由；advertised_endpoints（QR ep = https://hostname:port [DESIGN, QUESTION-103]，dev 模式 loopback http）。
+- chat.py：revoke-during-stream → SSE mesh.error DEVICE_REVOKED（两条路径都覆盖：循环间检查 job.cancel_reason + 上游 abort 抛 CANCELLED 分支, §15.6 best effort）。
+- cli.py：run = 单进程双监听（公网 TLS 1.3-only via uvicorn ssl_context_factory + admin HTTP loopback, §10.5/§10.6 step 6）+ 信号处理双服务器优雅退出；pair（打开配对 + 打印 QR + 轮询 pending + 交互式 SAS 确认, --approve/--deny/--no-wait）/ devices / revoke = admin HTTP 客户端（§15.4/§15.6；AdminUnreachable 提示先启动 agent）；doctor 仍 M3。
+- 测试 +53：unit 34（crypto 11 / pairing 13 / tokens 7 / ratelimit 3+2；共享 FakeStore/FakeClock 端口替身 tests/unit/fake_store.py）+ integration 19（完整配对→token→/models 流、409/403/410/429、anti-enumeration、单次挑战、吊销 403/401、TC-SEC-04 revoke-kills-stream <5s、admin Host/token 负路径、TLS rotate pin 变化）。
+- OpenAPI：export 脚本改为 include 真实路由（9 paths: info/pair×2/auth×2/models/health/chat/requests）；重新生成 mesh-v1.json。
+- 端到端冒烟（真实 uvicorn 进程, download/wp08-smoke/wp08_smoke.py）：12/12 — TLS 1.3 协商成功、TLS 1.2 被拒、admin.token 0600、CLI QR、pair/complete 202、admin SAS+approve、pair/status approved、challenge→token→Bearer /models+/health、无 token 401 fail-closed、agent 日志无 sec= 泄漏。
+- 仪表盘：WP-08 done (d74f25f)、新增"Pairing/auth E2E smoke"gate 行、pytest 155 passed、QUESTION-103、next steps 更新（WP-11 mDNS 可沙箱实现；WP-09/10 需 Android 构建环境）；修复 route.ts readdirSync 类型错误；agent-browser 桌面+移动复验通过、console 零错误。
+
+验证结果:
+- merged main = ffbf7fc（WP-08 d74f25f + dashboard ffbf7fc）。gate 全绿：ruff/format PASS、mypy --strict PASS、pytest 155 passed + 2 announced skips、import-linter 3/3 KEPT、OpenAPI drift OK、3 security scans PASS、fake backends 27/27、真实进程冒烟 12/12。lint（Next 侧）clean。
+
+未解决问题/风险，下一阶段建议:
+1. QUESTION-103 已登记（docs/OPEN_QUESTIONS.md）：HMAC 成帧/nonce 编码等 WIRE FORMAT 决定需 owner 确认——若与规范意图不符，修改是局部小 diff（crypto.py + 测试向量）。
+2. WP-09/WP-10（mesh-core Kotlin + RN App）需要 Android/Gradle 构建环境，沙箱不可行 → M2 收尾依赖 owner 环境；Agent 侧 M2 已完整。
+3. 下一 Agent 侧增量（沙箱可做）：WP-11 mDNS advertise（python-zeroconf 已在 lockfile，LGPL 已标注）；以及把 pairing/auth 的安全测试扩展为 §17.13 TC-SEC-03（重放）/TC-SEC-09（限流）正式条目。
+4. Owner actions 不变：fixtures 采集（阻塞 contract tests 硬门）、ADR-017、QUESTION-101/102/103。
+5. 注：本沙箱会在会话间把 HEAD 切回 main，WP-08 提交直接落在 main（d74f25f），wp-08-pairing-auth 分支指针已对齐到同一提交以保留引用。
