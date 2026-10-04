@@ -183,3 +183,30 @@ Work Log:
 
 Stage Summary:
 - User-visible progress surface live; `bun run lint` clean; committed 2fa76ae.
+
+---
+Task ID: 10 — webDevReview round 1 (WP-07)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + QA + 自选开发重点（WP-07 TLS identity）。
+
+项目状态判断:
+- M0/M1 完成且全绿（回归 88 passed / 2 announced skips）；仪表盘正常（console 无错误、200）。当前阶段稳定 → 按规范推进 M2 入口 WP-07（无 fixtures 依赖、可独立测试）。
+
+本轮完成:
+- QA: dev server 200s；agent-browser 仪表盘复验（全部 section 渲染、console 干净）；完整回归通过。
+- WP-07（分支 wp-07-tls-identity，merge af2d0dc）:
+  - `security/tls.py`：ECDSA P-256 自签 X.509（10y [DESIGN §17.3]、SAN=localmesh-agent+配置项、SHA-256 签名）；pin = SHA-256(DER SPKI) base64url 无填充（§17.3 编码规则、Appendix C trap）；`load_or_create_identity`（§10.6 step 3、§17.5 Create）；`renew_identity` 同 key 换证 ⇒ pin 不变 ⇒ 免重配对（§17.5 Renew，拒绝无关 key）；`rotate_identity` 仅显式调用（§17.5 Rotate）；key.pem 0600（§17.6）；损坏/过期/半套文件 → TlsIdentityError 拒绝启动、绝不静默重建（§10.7）。
+  - 14 个单元测试（pin 格式/DER 手工对拍、生命周期、权限、腐坏拒绝、过期检测与同 key 续期）。
+  - app.py 启动接线（§10.6 step 3），spki_pin 挂 app.state 供 M2 QR `fp` 使用。
+  - 发现规范冲突并按流程处理：§10.6 step 7 要求 ready 日志带指纹前缀，但 §17.10 allow-list 无对应键且 NFR-SEC-02 (P0) 优先 → pin 不写日志，登记 QUESTION-102（docs/OPEN_QUESTIONS.md）。
+- 仪表盘：WP-07 done（af2d0dc）、M2 in-progress（琥珀脉冲徽章，motion-reduce 友好）、QUESTION-102、gate 面板新增 TLS 行；样式细节：卡片/行 hover 过渡、tabular-nums、按钮 hover 间距过渡与 focus-visible ring、milestone chip hover。agent-browser 桌面截图复验通过。
+- Gate 全绿: ruff / mypy --strict / pytest 102 passed + 2 announced skips / import-linter 3/3 / drift OK / 3 security scans。
+
+验证结果:
+- merged main: af2d0dc（WP-07）+ f4c885d（dashboard）。lint（Next 侧）clean。
+
+未解决问题/风险，下一阶段建议:
+1. WP-08（下一个 WP，M2 主体）：SM-PAIR 配对状态机 + auth challenge/token + admin listener + QR 渲染；context bundle §13.2/§14.1/§15.2/§15.4/§17.3–17.7；WP-07 pin 将作为 QR `fp`。
+2. TLS 1.3 uvicorn 公网监听集成（与 WP-08 一起做才有意义——无 token 时公网端点全部 401）。
+3. Owner actions 不变：fixtures 采集（阻塞 contract tests）、ADR-017、QUESTION-101/102 确认。
+4. cryptography 50.x API 备注：`get_values_for_type` 直接返回原始值；NameAttribute.value 可为 bytes（mypy strict 下需收窄）。
