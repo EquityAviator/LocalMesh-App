@@ -282,3 +282,33 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（WP-11 Agent 侧 mDN
 3. Owner actions 不变：fixtures 采集（阻塞 contract tests 硬门）、ADR-017、QUESTION-101/102/103（103 的 wire-format 项 1-4 仍 OPEN）。
 4. mDNS 实机验证待真实 LAN（沙箱多播环境未验证 [Not verified]）；`po` 语义与 QUESTION-103 一起等 owner 确认。
 5. 沙箱注：WP-11 提交落在 main（5d6812b、e3f01fc），wp-11-mdns 分支指针已对齐 e3f01fc。
+
+---
+Task ID: 13 — webDevReview round 4 (QA fixes + WP-13 Doctor v1)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 修复 + Doctor v1）。
+
+项目状态判断:
+- 发现并修复 3 个真实问题：(1) pytest CI 调用方式收集失败（`bash scripts/pytest_layer.sh agent/tests/unit` 从仓库根运行时 `from tests.unit.fake_store import ...` 因 sys.path 缺 agent/ 报 ModuleNotFoundError——此前各轮仅以 `cd agent && python -m pytest` 通过，CI workflow 原样跑会挂）；(2) scripts/export_openapi.py ruff I001 import 排序；(3) **admin token 传输头不符规格**——LM-ARCH-001 §13.1 与 §17.13 T-11 两次明文命名 `X-Admin-Token`，而 WP-08 实现用了 `Authorization: Bearer`（QUESTION-103 item 4 当时的"§17.6 未命名 header"读法漏掉了该证据）。规格优先（§1.1），已对齐实现并回改 QUESTION-103。
+- agent-browser QA：桌面 1280 + 移动 390 渲染正常、console/errors 零、过滤 chips/行展开/复制按钮实测通过、/api/localmesh/status 200。修复后无遗留 bug → 推进新需求 WP-13。
+
+本轮完成 (commits 3cf64bc, f1a8873, 8e86f56, d1c7f86 — 均落 main):
+- agent/conftest.py：pytest prepend 模式借 conftest 目录把 agent/ 锚进 sys.path，两种调用方式（CI 风格 / python -m）等价；单元层 fixture 仍留在 tests/unit/conftest.py。
+- X-Admin-Token 对齐：admin_app 守卫只收 `X-Admin-Token`（恒时比较；Bearer 显式 401 负路径测试）；cli._admin_request、wp08_smoke.py 同步；QUESTION-103 item 4 附证据更正（operator 路由命名仍 OPEN，loopback-only 可改名）。
+- Doctor v1（WP-13 Agent 侧, FR-CONN-06, §18.1-18.4）：
+  - `doctor.py`：§18.4 十项有序检查（config → data_dir §14.1/tls key 0600 → tls pin 仅打 12 字符前缀 §10.6 → port free/listening/occupied（loopback /info 自识别）→ backends loopback 探测（§6 原生路径 /v1/models、/api/tags）→ backend_bind CI-06/CI-07 LAN 暴露审计（§18.2 Det 列原文）→ mdns（复用 WP-11 接口选择，T-21 hint 语义）→ firewall（ufw/netsh/socketfilterfw best effort）→ tailscale CLI [ASSUMPTION §6.3] → clock（CI-23 单调钟免疫注记）。Finding = {check, level, ci_ids, summary, detail, fix}；探针全部可注入（DoctorProbes），降级为 unknown-info，Agent 未运行也能跑完整个梯子。
+  - CLI：`doctor [--config] [--json] [--rotate-tls]`；--rotate-tls 执行 §17.5 显式轮换并提示同时吊销设备/重启；退出码 0/1/2 按 level [DESIGN]。
+  - `GET /admin/doctor`（§13.1 spec-named）：doctor_fn 注入 + asyncio.to_thread，admin 层不 import doctor。
+  - 测试：28 unit（每个 CI 一条 golden 输出断言 + 梯序 + 无密钥断言：全 pin/admin token 不出现在输出）+ admin doctor endpoint 集成测试；替换过期的 doctor-stub 测试。
+- 仪表盘（d1c7f86）：新增 "Connection ladder & doctor (§18.1 · §18.4)" 面板——L0-L10 梯子（渐变连线 + 覆盖率图例 agent/shared/app + emerald 脉冲点）、§18.4 十项检查（序号圆点 + CI chips + 模块路径 hover + delivered 勾）、CLI 命令复制按钮、admin endpoint + 退出码徽章；数据层 WP-13 done 行、M3 详情更新、pytest 212 collected、Doctor/X-Admin-Token 两条新 gate、QUESTION-103 item 4 状态更新、next steps → WP-14/owner actions。
+
+验证结果:
+- merged main = d1c7f86（3cf64bc → f1a8873 → 8e86f56 → d1c7f86）。gate 全绿：ruff/format PASS、mypy --strict PASS（14 files）、pytest 210 passed + 2 announced skips、import-linter 3/3 KEPT、OpenAPI drift OK、3 security scans PASS、fake backends 27/27、bun lint clean、agent-browser 桌面+移动+交互复验通过（console 零错误、copy 反馈实测）。
+
+未解决问题/风险，下一阶段建议:
+1. QUESTION-103 剩余 OPEN 项：wire-format items 1-2（HMAC 成帧/nonce 编码）+ operator 路由命名——等 owner 确认；若变更均为局部小 diff。
+2. WP-09/WP-10 + WP-11 App 侧 + WP-13 App Diagnostics screen 需要 Android/Gradle 环境，沙箱不可行 → M2/M3 收尾依赖 owner 环境。
+3. 下一沙箱增量建议 = WP-14 Tailscale 探测适配器（M4, §6.3/§18.6）：doctor 的 CLI 探针可直接升级为正式 TailnetProbe 端口实现（含 [ASSUMPTION] 字段的防御性解析），加 T2 endpoint 发现。
+4. Owner actions 不变：fixtures 采集（阻塞 contract tests 硬门）、ADR-017、QUESTION-101/102/103。
+5. mDNS/doctor 的 LAN 行为（多播可见性、CI-06/07 LAN 探测、防火墙规则）在真实局域网验证——沙箱多播未验证 [Not verified]。
+6. 注：本沙箱会在会话间把 HEAD 切回 main，本轮提交直接落在 main。
