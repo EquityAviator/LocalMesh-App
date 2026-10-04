@@ -758,10 +758,11 @@ export default function Home() {
                   <Stethoscope className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
                     Delivered this round:{" "}
-                    <span className="font-medium text-foreground">Doctor v1</span> —
-                    the §18.4 ladder with CI-keyed findings; next increment:{" "}
-                    <span className="font-medium text-foreground">WP-14</span> Tailscale
-                    probe adapter (M4).
+                    <span className="font-medium text-foreground">WP-14 Tailnet probe</span> —
+                    the §10.2 <code className="text-[10px]">TailnetProbe</code> port with T2
+                    candidates in QR/status (§18.6); next increment:{" "}
+                    <span className="font-medium text-foreground">WP-15</span> /device (M5) or
+                    owner-driven Android work packages.
                   </span>
                 </div>
               </motion.section>
