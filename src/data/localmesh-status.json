@@ -31,7 +31,7 @@
   "gates": [
     { "name": "ruff check + format", "result": "pass", "ref": "§21.2" },
     { "name": "mypy --strict (core/ + security/)", "result": "pass", "ref": "§21.2" },
-    { "name": "pytest unit + integration + security", "result": "pass", "detail": "176 collected — 174 passed + 2 announced skips (incl. 19 mDNS units + 7 formal §17.13 entries)", "ref": "§21.5" },
+    { "name": "pytest unit + integration + security", "result": "pass", "detail": "183 collected — 181 passed + 2 announced skips (incl. 19 mDNS units + 7 formal §17.13 entries)", "ref": "§21.5" },
     { "name": "mDNS service contract (§16.2)", "result": "pass", "detail": "instance name, TXT keys/values/255B cap, CI-24 exclusion, register/re-announce/stop vs stubbed zeroconf", "ref": "§16.2, FR-AGT-04" },
     { "name": "TLS pin encoding (b64url no-pad) + lifecycle", "result": "pass", "detail": "create/renew-same-pin/rotate-new-pin/corrupt-refusal", "ref": "§17.3, §17.5, §10.7" },
     { "name": "Pairing/auth E2E smoke (real uvicorn process)", "result": "pass", "detail": "12/12: TLS 1.3 negotiated, TLS 1.2 refused, QR→SAS→approve→token→/models, fail-closed 401, secret never logged", "ref": "§10.6, §15.4, §17.3" },
