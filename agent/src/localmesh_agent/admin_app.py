@@ -99,6 +99,7 @@ def create_admin_app(
     metrics_fn: Callable[[], str] | None = None,
     control_plane: Any = None,
     cp_audit_cb: Callable[[str], None] | None = None,
+    backup_pin_fn: Callable[[str], None] | None = None,
 ) -> FastAPI:
     """Admin app factory (§10.5: all state created here; no globals).
 
@@ -284,6 +285,27 @@ def create_admin_app(
     async def admin_tls_rotate() -> dict[str, str]:
         new_pin = tls_rotate()
         return {"spki_pin": new_pin, "note": "Phones must re-pair (PIN_MISMATCH, §17.5)."}
+
+    @app.post("/admin/tls/backup-pin")
+    async def admin_tls_backup_pin(body: dict[str, object]) -> dict[str, object]:
+        """M9 pin rotation staging (§17.5 "Smooth rotation", P2): stage the
+        hash of the NEXT key so /auth/token pre-announces it as
+        `pin_backup` and paired Apps re-pin without a manual re-pair."""
+        if backup_pin_fn is None:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Backup pin staging is not wired into this agent.",
+                details={"reason": "unavailable"},
+            )
+        pin = body.get("spki_pin")
+        if not isinstance(pin, str) or len(pin) != 43 or "-" in pin or "_" in pin:
+            # 43 chars = base64url(SHA-256) unpadded (§17.3 encoding rule)
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Body must be {\"spki_pin\": <43-char base64url SHA-256 pin>}.",
+            )
+        backup_pin_fn(pin)
+        return {"staged": True, "note": "Presented as pin_backup by /auth/token."}
 
     # -- status (§13.1 spec-named; shape [DESIGN], Metadata only) ---------------
 

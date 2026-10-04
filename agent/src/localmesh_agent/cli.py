@@ -243,6 +243,7 @@ def _run(args: argparse.Namespace) -> int:
         metrics_fn=_admin_metrics,
         control_plane=app.state.control_plane,
         cp_audit_cb=lambda event: app.state.store.append_audit(event),
+        backup_pin_fn=lambda pin: app.state.store.set_setting("tls_pin_backup", pin),
     )
 
     public_host = "127.0.0.1" if args.dev_insecure else settings.listen.host

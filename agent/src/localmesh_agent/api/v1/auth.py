@@ -186,9 +186,17 @@ async def auth_token(request: Request) -> dict[str, object]:
         "auth_ok", device_id=device_id, meta={"agent_id": str(app_state.agent_id)}
     )
     app_state.devices.touch_last_seen(device_id)
-    return {
+    response: dict[str, object] = {
         "access_token": issued.token,
         "token_type": "Bearer",
         "expires_in": issued.expires_in,
         "scopes": str(device["scopes"]).split(),
     }
+    # M9 pin rotation (§17.5 "Smooth rotation", P2): the Agent MAY
+    # pre-announce the hash of its NEXT public key here; a paired App stores
+    # it and accepts it after rotation, then re-pins. Only present when the
+    # operator stages a next pin via `POST /admin/tls/backup-pin`.
+    pin_backup = request.app.state.store.get_setting("tls_pin_backup")
+    if pin_backup:
+        response["pin_backup"] = pin_backup
+    return response

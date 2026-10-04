@@ -551,3 +551,20 @@ Work Log:
 
 Stage Summary:
 - M7 COMPLETE (sandbox surface): 310 unit + 37 fake + 96 integration + 20 security = 463 tests green; ruff clean; mypy --strict 19 files clean; import-linter 3/3; OpenAPI 16 paths drift OK; content-column scan OK. Residual owner actions: real Whisper service fixtures (CAPTURE.md), real backend /v1/embeddings contract tests (fixture gate), Android attachment UI (WP-12/13).
+
+---
+Task ID: 22 — M8 Routing & agent runtime full implementation (§16.6, FR-RTE-01..03, FR-AGENT-RT)
+Agent: Z.ai Code (main agent)
+Task: Complete M8 per user directive.
+
+Work Log:
+- FR-RTE-01/02: §16.6 auto-routing rule engine in core/router.py — VERBATIM scoring (0.40*quality/5 + 0.25*warm + 0.20*speed_norm + 0.15*(1-queue_load), ×fit; candidates filtered by state/known-backend + modality/capability subset; unknown context → fit 0.5; ties → lexicographic; est_tokens=ceil(chars/4)); quality_rank default 3 + Appendix E override; speed_norm provider (per-model recent tokens/s, null→0.5, 100 tok/s normalisation [DESIGN]); queue_load provider (scheduler.backend_load); weights in config (RoutingConfig, must sum to 1).
+- §16.6 gate "Routing decisions explained in mesh.meta": mesh.meta.routing (mode/mesh_model_id/backend_id/reason/est_tokens/top-5 per-candidate score breakdown; pinned requests report mode=pinned) — additive field per §13.10.
+- FR-RTE-03: classifier hook wired ONLY when [routing] classifier_enabled=true + classifier_model set; scheduled through the §16 Scheduler; can only REFINE the required set; failures degrade silently; OFF by default (S-21).
+- FR-AGENT-RT: ADR-020 written (default-deny; allow-listed no-I/O built-ins time_now/uuid_v4/list_models; forbidden categories shell/fs/network/browser; bounded loop ≤5 iterations (config ≤10); 4096 B output cap; non-stream-only v1; audit without arguments). core/tools.py + core/agent_loop.py; ChatChunk gains defensive tool_calls parse; ChatRequest carries pass-through tools; tools gate 422s when disabled / stream+tools; tool_calls turn e2e over the fake (SSE delta form per ADR-009 single-parser rule); trace is Metadata-only (arguments never echoed).
+- Fake ollama: deterministic tool_calls turn (SSE + JSON) behind the CALL_TOOL scaffold marker; ordering bug fixed (tool marker check must precede the stream branch).
+- Tests +40: unit 21 (router_auto 11 + tools_runtime 10) + integration 8 (auto routing meta/pinned/404-no-candidate + tools disabled/stream-reject/e2e-loop/unknown-tool-denied/shape-422) + policy adjustments (tools now allow-listed per §13.6 M8 arrival; response_format still rejected).
+- Gate notes: append_audit audit event unchanged; §20.1 untouched; OpenAPI unchanged paths (chat body schema unchanged — tools validated in code, schema additive doc stays code-level).
+
+Stage Summary:
+- M8 COMPLETE (sandbox surface): 331 unit + 104 fake+integration + 20 security = 455 tests green; ruff clean; mypy --strict (21 files) clean; import-linter 3/3; drift OK. Residual owner actions: real Backend tool-calling contract tests (fixtures), §16.6 tunables acceptance (speed scale 100 tok/s is [DESIGN]), classifier model selection.

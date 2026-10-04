@@ -1,0 +1,42 @@
+# LocalMesh Agent — systemd unit (M9, §21.6)
+#
+# Install as /etc/systemd/system/localmesh-agent.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now localmesh-agent
+#
+# The unit runs the Agent as a dedicated non-root user with a hardened
+# sandbox. The Agent serves TLS 1.3-only on :8443 and the loopback admin API
+# on 127.0.0.1:8444 (ADR-014) — only the public port may be exposed, which
+# the firewall remains responsible for (§18.6).
+
+[Unit]
+Description=LocalMesh Agent — secure LAN mesh inference
+Documentation=https://localmesh.invalid/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=localmesh
+Group=localmesh
+ExecStart=/opt/localmesh/venv/bin/python -m localmesh_agent run --config /etc/localmesh/config.toml
+Restart=on-failure
+RestartSec=5
+
+# --- sandboxing (defence in depth; the Agent already keeps secrets in the
+#     keyring and its data dir owner-only, §17.6) ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/localmesh
+
+[Install]
+WantedBy=multi-user.target
