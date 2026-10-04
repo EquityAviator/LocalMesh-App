@@ -159,7 +159,29 @@ class LoggingConfig(_StrictModel):
 
 
 class ControlPlaneConfig(_StrictModel):
-    enabled: bool = False  # M6 optional (§22.1)
+    """Optional M6 Control Plane (§12, FR-CP-01..04; §22.1 "optional").
+
+    Off by default. When `enabled`, `url` (https) and `auth_ref` (the keyring
+    entry holding the CP key, §17.6 — never the key itself) are REQUIRED so a
+    half-configured agent fails fast at config load instead of syncing to a
+    wrong place. The Agent remains authoritative (§12.1); the CP is never in
+    the content path (ADR-001).
+    """
+
+    enabled: bool = False
+    url: str = ""  # e.g. https://<project>.supabase.co [UNVERIFIED deployment]
+    auth_ref: str = ""  # keyring entry name for the CP key (§17.6)
+    heartbeat_interval_s: int = Field(default=60, ge=10, le=3600)  # §12.3: "default 60 s"
+
+    @model_validator(mode="after")
+    def _enabled_requires_target(self) -> ControlPlaneConfig:
+        if self.enabled:
+            parsed = urlparse(self.url)
+            if parsed.scheme != "https" or not parsed.hostname:
+                raise ValueError("control_plane.url must be an https URL when enabled")
+            if not self.auth_ref:
+                raise ValueError("control_plane.auth_ref is required when enabled (§17.6)")
+        return self
 
 
 class Settings(BaseSettings):

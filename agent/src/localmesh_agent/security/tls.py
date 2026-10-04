@@ -84,6 +84,20 @@ def compute_pin(cert_pem: bytes) -> str:
     return b64url_nopad(hashlib.sha256(spki_der).digest())
 
 
+def public_spki_der(cert_pem: bytes) -> bytes:
+    """The leaf certificate's public key as DER SPKI (§12.2 CP `public_key`).
+
+    M6: the Control Plane stores the Agent's public key (`bytea` SPKI DER);
+    the pairing QR already pins its SHA-256 (`fp`, §17.4) — this helper is the
+    single place that derives the pre-image so pin and CP key can never drift.
+    """
+    cert = x509.load_pem_x509_certificate(cert_pem)
+    return cert.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
 def _generate_key() -> ec.EllipticCurvePrivateKey:
     return ec.generate_private_key(ec.SECP256R1())  # §17.3: P-256
 

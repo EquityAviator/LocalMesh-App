@@ -17,6 +17,28 @@ Format (append below, keep reverse-chronological order — newest first):
 - Status: OPEN | ANSWERED (<answer summary>) | SUPERSEDED (by <id>)
 ```
 
+## QUESTION-107 — Supabase Control Plane call shapes (§12.3)
+- Date: 2026-10-04
+- Raised by: M6 (WP-16, §12 implementation)
+- Question: What are the exact Supabase REST/Edge-Function call shapes for the
+  §12.3 flows — (a) the Google ID-token sign-in exchange, (b) the
+  `register-agent` one-time-link code exchange, (c) PostgREST `bytea` and
+  `timestamptz` wire encodings for the §12.2 `devices` table?
+- Context/evidence: §12.3 marks the sign-in call shape `[UNVERIFIED call
+  shape — verify at M6]`; §12.2 fixes the schema verbatim but not the wire
+  encoding. Agent-side adapter: `agent/src/localmesh_agent/adapters/
+  controlplane.py` (PostgREST conventions chosen: `rest/v1/devices` PATCH by
+  `id`/`public_key`, `functions/v1/register-agent`, `\x…` bytea hex).
+- Why we must not guess: wrong shapes mean a deployed CP silently rejects
+  Agent heartbeats (mirrored as "offline"), or worse, an extra table/column
+  creeps in and trips FR-CP-04.
+- Default if unanswered: ship the documented PostgREST conventions behind the
+  adapter boundary; the CP stays OPTIONAL (§12) and disabled by default, so a
+  wrong shape cannot affect chat/pairing. Shapes are corrected at first real
+  deployment (one-file diff per ADR-019).
+- Status: OPEN (activation itself is APPROVED — see ADR-019; Q-05 gate closed
+  by the M0–M9 milestone review session directive).
+
 Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARCH-001
 §24); agent-raised questions use QUESTION-101 onwards to avoid ID collisions.
 

@@ -18,6 +18,7 @@ Wire rules (§13): every response carries `X-Mesh-Api-Version: 1` and
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -28,6 +29,7 @@ from fastapi.responses import JSONResponse
 from localmesh_agent.adapters.backends.lmstudio import LMStudioBackend
 from localmesh_agent.adapters.backends.ollama import OllamaBackend
 from localmesh_agent.adapters.backends.openai_compat import OpenAICompatBackend
+from localmesh_agent.adapters.controlplane import SupabaseControlPlaneClient
 from localmesh_agent.adapters.discovery.mdns import (
     build_mdns_advertiser,
     build_service_ad,
@@ -44,6 +46,10 @@ from localmesh_agent.api.errors import mesh_error_handler
 from localmesh_agent.api.v1 import auth, chat, device, health, info, models, pair, requests
 from localmesh_agent.api.v1.auth import ChallengeStore
 from localmesh_agent.config import Settings
+from localmesh_agent.core.control_plane import (
+    ControlPlaneService,
+    registration_codec,
+)
 from localmesh_agent.core.entities import new_uuid7
 from localmesh_agent.core.errors import MeshError
 from localmesh_agent.core.registry import CapabilityRegistry
@@ -55,7 +61,7 @@ from localmesh_agent.observability.metrics import MetricsRegistry
 from localmesh_agent.security.devices import DeviceService
 from localmesh_agent.security.pairing import PairingService
 from localmesh_agent.security.ratelimit import SlidingWindowLimiter
-from localmesh_agent.security.tls import load_or_create_identity
+from localmesh_agent.security.tls import load_or_create_identity, public_spki_der
 from localmesh_agent.security.tokens import TokenService
 from localmesh_agent.store.sqlite import Store
 
@@ -117,6 +123,47 @@ def build_adapters(settings: Settings) -> list[InferenceBackend]:
                 )
             )
     return adapters
+
+
+def _build_control_plane(
+    settings: Settings,
+    store: Store,
+    agent_id: str,
+    tls_identity: Any,
+    clock: Any,
+) -> ControlPlaneService | None:
+    """M6 (§12): build the optional Control Plane service, or None.
+
+    The CP key is read from the OS keyring (§17.6); a missing entry yields an
+    empty key so every CP call fails → the service reports "offline" (§12.3
+    failure mode) instead of half-configured silence.
+    """
+    cp_settings = settings.control_plane
+    if not cp_settings.enabled:
+        return None
+    import keyring
+
+    api_key = keyring.get_password("localmesh", cp_settings.auth_ref) or ""
+    client = SupabaseControlPlaneClient(cp_settings.url, api_key)
+    load_reg, save_reg, clear_reg = registration_codec(store)
+
+    def _device_public_key(device_id: str) -> bytes | None:
+        row = store.get_device(device_id)
+        raw = row.get("public_key_spki") if row is not None else None
+        return bytes(raw) if isinstance(raw, (bytes, bytearray)) else None
+
+    return ControlPlaneService(
+        client,
+        agent_id=agent_id,
+        display_name=settings.agent.display_name,
+        public_key_spki=public_spki_der(tls_identity.cert_pem),
+        clock=clock,
+        load_registration=load_reg,
+        save_registration=save_reg,
+        clear_registration=clear_reg,
+        device_public_key=_device_public_key,
+        heartbeat_interval_s=cp_settings.heartbeat_interval_s,
+    )
 
 
 def advertised_endpoints(settings: Settings, *, dev_insecure: bool) -> tuple[str, ...]:
@@ -222,7 +269,27 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
 
     # -- WP-08 security services (§10.4 PairingService/TokenService/
     #    DeviceService; §13.8 limiter; all state lives on app.state, §10.5) --
-    devices_service = DeviceService(store, on_revoke=scheduler.cancel_by_device)
+    # M6 (§12): the Control Plane service is OPTIONAL and off by default.
+    # It is Metadata-only (§12.1, ADR-001/FR-CP-04) and never blocks the
+    # Agent: revocation mirror failures are swallowed after logging, the
+    # heartbeat degrades to "offline" (§12.3 failure mode).
+    control_plane = _build_control_plane(settings, store, agent_id, tls_identity, clock)
+
+    # The revoke hook fans out: local authority (cancel streams) ALWAYS runs;
+    # the CP mirror (FR-CP-03) is a best-effort fire-and-forget side task.
+    _cp_mirror_tasks: set[asyncio.Task[None]] = set()
+
+    def _on_device_revoked(device_id: str) -> int:
+        cancelled = scheduler.cancel_by_device(device_id)
+        if control_plane is not None:
+            mirror = asyncio.create_task(
+                control_plane.mirror_device_revocation(device_id, clock.now_wall())
+            )
+            _cp_mirror_tasks.add(mirror)
+            mirror.add_done_callback(_cp_mirror_tasks.discard)
+        return cancelled
+
+    devices_service = DeviceService(store, on_revoke=_on_device_revoked)
     tokens = TokenService(store, clock)
     pairing = PairingService(
         store=store,
@@ -318,8 +385,17 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         # WP-15 part 2 (§16.5, §10.6 order): the warm loop starts AFTER the
         # registry is built/warm — it reads registry entries each tick.
         keep_warm.start()
+        # M6 (§12.3): CP heartbeat starts last — it is optional Metadata sync
+        # and must never delay the Agent's core startup.
+        if control_plane is not None:
+            control_plane.start()
         yield
         # Shutdown is the exact reverse (§10.6 symmetry).
+        if control_plane is not None:
+            await control_plane.stop()
+        if _cp_mirror_tasks:  # drain in-flight mirrors before store closes
+            await asyncio.gather(*_cp_mirror_tasks, return_exceptions=True)
+            _cp_mirror_tasks.clear()
         await keep_warm.stop()
         if app.state.mdns is not None:
             await app.state.mdns.stop()
@@ -362,6 +438,7 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     app.state.tailnet = None
     app.state.hardware = hardware
     app.state.mdns = mdns_advertiser
+    app.state.control_plane = control_plane  # M6 (§12): None when disabled
 
     # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
     # (info/pair/auth) + WP-15 scope (device, §22.2 M5). tasks.py arrives

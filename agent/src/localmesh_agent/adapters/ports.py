@@ -325,6 +325,45 @@ class Store(Protocol):
 
 
 @runtime_checkable
+class ControlPlaneClient(Protocol):
+    """Optional M6 Control Plane client (§12, FR-CP-01..03).
+
+    The Control Plane is NOT in the content path (ADR-001/§12.1: it never
+    carries prompts, outputs or files). The Agent talks to it for exactly
+    three Metadata-only operations:
+
+    - ``register`` — one-time link code flow (§12.3 "Register Agent").
+    - ``heartbeat`` — upsert ``last_seen`` at low frequency (§12.3, 60 s).
+    - ``mirror_revocation`` — FR-CP-03: the Agent remains authoritative; the
+      mirror only lets other account devices *notice* a revocation (§12.1
+      "Does NOT replace local revocation").
+
+    Call shapes follow the Supabase REST conventions and are `[UNVERIFIED —
+    verify at M6 deployment]` per §12.3 (QUESTION-107). Every method raises
+    :class:`ControlPlaneError` on failure; the caller degrades, never the
+    Agent (§12.3 failure mode: "continue with local data").
+    """
+
+    async def register(
+        self, code: str, agent_id: str, name: str, public_key_spki: bytes
+    ) -> dict[str, Any]:
+        """Exchange the one-time link code for the CP device row identity."""
+        ...
+
+    async def heartbeat(self, cp_device_id: str, last_seen_epoch: int) -> None:
+        """Upsert `last_seen` on the Agent's own CP row (§12.3)."""
+        ...
+
+    async def mirror_revocation(self, public_key_spki: bytes, revoked_at_epoch: int) -> int:
+        """Mirror a local device revocation to the CP (FR-CP-03).
+
+        Returns the number of CP rows updated (0 when the mirrored device has
+        no CP row of its own — e.g. the phone never registered with the CP).
+        """
+        ...
+
+
+@runtime_checkable
 class Clock(Protocol):
     """Injectable time source (§10.2: 'monotonic + wall, injectable for tests')."""
 

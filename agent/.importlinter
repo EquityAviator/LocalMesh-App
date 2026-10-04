@@ -42,3 +42,4 @@ forbidden_modules =
     localmesh_agent.adapters.discovery
     localmesh_agent.adapters.tailscale
     localmesh_agent.adapters.keyring_store
+    localmesh_agent.adapters.controlplane

@@ -54,6 +54,10 @@ AUDIT_EVENTS: frozenset[str] = frozenset(
         "backend_down",
         "backend_up",
         "tls_rotated",
+        # M6 (§12.3): operator-consented account link via the one-time code.
+        # The §14.1 vocabulary ends open ("…") — same [DESIGN] hook used for
+        # device_updated; meta carries NO code/key (§17.10 allow-list holds).
+        "control_plane_registered",
     }
 )
 

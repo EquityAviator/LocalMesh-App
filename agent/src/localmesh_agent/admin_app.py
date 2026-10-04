@@ -52,6 +52,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from localmesh_agent.api.errors import mesh_error_handler
+from localmesh_agent.core.control_plane import ControlPlaneRegistrationError
 from localmesh_agent.core.errors import MeshError
 from localmesh_agent.observability.logging import get_logger
 from localmesh_agent.security.pairing import PairingError, SessionState
@@ -96,6 +97,8 @@ def create_admin_app(
     doctor_fn: Callable[[], list[Any]] | None = None,
     status_fn: Callable[[], dict[str, Any]] | None = None,
     metrics_fn: Callable[[], str] | None = None,
+    control_plane: Any = None,
+    cp_audit_cb: Callable[[str], None] | None = None,
 ) -> FastAPI:
     """Admin app factory (§10.5: all state created here; no globals).
 
@@ -105,6 +108,10 @@ def create_admin_app(
     Metadata block and `metrics_fn` renders the §20.1 Prometheus exposition —
     both injected by the CLI wiring so the admin layer stays free of
     core/observability imports.
+
+    `control_plane` (M6, §12) is the optional Control Plane service or None;
+    `cp_audit_cb` receives the §20.2 audit event name after a successful
+    registration (operator action audit trail).
     """
     app = FastAPI(title="LocalMesh Agent Admin", version="0.1.0", docs_url=None, redoc_url=None)
     app.state.admin_token = admin_token
@@ -285,6 +292,46 @@ def create_admin_app(
         if status_fn is None:  # pragma: no cover - wiring always injects it
             raise MeshError("INVALID_REQUEST", "Status is not wired into this agent.")
         return dict(status_fn())
+
+    # -- control plane (M6, §12.3 operator-consented registration) --------------
+
+    @app.post("/admin/control-plane/register")
+    async def admin_cp_register(body: dict[str, object]) -> dict[str, object]:
+        if control_plane is None:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Control Plane sync is disabled in config ([control_plane] enabled=false).",
+                details={"reason": "control_plane_disabled"},
+            )
+        code = body.get("code")
+        if not isinstance(code, str) or not code.strip():
+            raise MeshError(
+                "INVALID_REQUEST",
+                'Body must be {"code": "<one-time link code from the Phone>"} (§12.3).',
+                details={"missing_fields": ["code"]},
+            )
+        try:
+            registration = await control_plane.register(code)
+        except ControlPlaneRegistrationError:
+            raise MeshError(
+                "BACKEND_UNAVAILABLE",
+                "Control Plane registration failed; the Agent will keep working "
+                "with local data (§12.3).",
+                details={"reason": "control_plane_unavailable"},
+            ) from None
+        if cp_audit_cb is not None:
+            cp_audit_cb("control_plane_registered")
+        return {
+            "state": str(control_plane.state().value),
+            "registered": True,
+            "registered_at": registration.get("registered_at"),
+        }
+
+    @app.get("/admin/control-plane/status")
+    async def admin_cp_status() -> dict[str, object]:
+        if control_plane is None:
+            return {"enabled": False, "state": "disabled", "registered": False}
+        return dict(control_plane.status())
 
     # -- doctor (§13.1 spec-named; findings per §18.4) --------------------------
 

@@ -218,6 +218,11 @@ def _run(args: argparse.Namespace) -> int:
                 if tailnet is not None
                 else None
             ),
+            "control_plane": (
+                state.control_plane.status()
+                if state.control_plane is not None
+                else {"enabled": False, "state": "disabled", "registered": False}
+            ),
         }
 
     def _admin_metrics() -> str:
@@ -236,6 +241,8 @@ def _run(args: argparse.Namespace) -> int:
         doctor_fn=_admin_doctor,
         status_fn=_admin_status,
         metrics_fn=_admin_metrics,
+        control_plane=app.state.control_plane,
+        cp_audit_cb=lambda event: app.state.store.append_audit(event),
     )
 
     public_host = "127.0.0.1" if args.dev_insecure else settings.listen.host
