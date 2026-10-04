@@ -422,7 +422,7 @@ export default function Home() {
         )}
 
         {!data && !error && (
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-44 rounded-xl" />
             ))}
@@ -473,7 +473,7 @@ export default function Home() {
               </div>
             </motion.section>
 
-            <div className="grid gap-6 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
               {/* Work packages */}
               <motion.section
                 className="lg:col-span-3"
@@ -654,7 +654,7 @@ export default function Home() {
               </motion.section>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
               {/* Security posture */}
               <motion.section
                 className="lg:col-span-3"
@@ -805,7 +805,7 @@ export default function Home() {
                   WP-13 agent side · {data.doctor.checks.length} ordered checks
                 </span>
               </div>
-              <div className="grid gap-6 lg:grid-cols-5">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
                 {/* §18.1 ladder — walked top-down */}
                 <Card className="transition-shadow hover:shadow-md lg:col-span-2">
                   <CardHeader className="pb-2">
@@ -1095,7 +1095,7 @@ export default function Home() {
               >
                 Open questions &amp; owner actions (§24)
               </h2>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {data.openQuestions.map((q) => {
                   const blocking = q.status === "BLOCKING";
                   return (
