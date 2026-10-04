@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 
 function walkPyFiles(dir: string, acc: string[] = []): string[] {
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: string[];
   try {
     entries = readdirSync(dir);
   } catch {
