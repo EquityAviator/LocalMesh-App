@@ -5,7 +5,7 @@
   "milestones": [
     { "id": "M0", "name": "Foundations", "status": "done", "detail": "Repo, CI, fake backends, dependency spike, OpenAPI skeleton, governance docs" },
     { "id": "M1", "name": "Agent core (loopback)", "status": "done", "detail": "Config, store, adapters, registry, scheduler, chat SSE, cancel, /health, CLI run — dev-insecure loopback only" },
-    { "id": "M2", "name": "Secure LAN MVP", "status": "next", "detail": "TLS identity, pairing (SM-PAIR), auth/tokens, admin listener + QR, App pair & chat" },
+    { "id": "M2", "name": "Secure LAN MVP", "status": "in-progress", "detail": "TLS identity done (WP-07); next: pairing SM-PAIR, auth/tokens, admin listener + QR, App pair & chat" },
     { "id": "M3", "name": "Discovery & connection manager", "status": "planned", "detail": "mDNS advertise+discover, SM-CONN, permission handling, Doctor v1" },
     { "id": "M4", "name": "Remote (Tailnet)", "status": "planned", "detail": "Tailnet probe, T2 candidates, racing/failover, guidance cards" },
     { "id": "M5", "name": "Multi-backend, metrics", "status": "planned", "detail": "Hardware probe, /device, load/unload, keep-warm, concurrency settings" },
@@ -21,15 +21,16 @@
     { "id": "WP-04", "title": "Agent config (Appendix E), allow-list logging, SQLite store + 0001_init", "milestone": "M1", "status": "done", "reqs": ["FR-AGT-03", "NFR-SEC-02", "§14.1", "§17.10"], "commit": "f222fcc" },
     { "id": "WP-05", "title": "Backend adapters (LM Studio / Ollama / OpenAI-compat) + CapabilityRegistry", "milestone": "M1", "status": "done", "reqs": ["FR-MOD-01", "FR-MOD-02", "§10.2-10.4", "§16.3"], "commit": "8155fcc" },
     { "id": "WP-06", "title": "Scheduler + chat SSE (API-CHAT-01) + cancel + /models + /health + CLI run", "milestone": "M1/M2", "status": "done", "reqs": ["FR-CHAT-01/02/04/05", "NFR-PERF-03", "§16.4"], "commit": "cb008cc" },
-    { "id": "WP-07", "title": "TLS identity + pin calc", "milestone": "M2", "status": "next", "reqs": ["ADR-006"], "commit": null },
-    { "id": "WP-08", "title": "Pairing + auth + tokens + revoke (+ admin API)", "milestone": "M2", "status": "planned", "reqs": ["FR-PAIR-01..06"], "commit": null },
+    { "id": "WP-07", "title": "TLS identity — P-256 self-signed cert, SPKI pin (b64url no-pad), renew/rotate", "milestone": "M2", "status": "done", "reqs": ["ADR-006", "§17.3", "§17.5", "§17.6", "§10.6"], "commit": "af2d0dc" },
+    { "id": "WP-08", "title": "Pairing + auth + tokens + revoke (+ admin API)", "milestone": "M2", "status": "next", "reqs": ["FR-PAIR-01..06"], "commit": null },
     { "id": "WP-09", "title": "mesh-core Kotlin: Keystore, pinned HTTP/SSE", "milestone": "M2", "status": "planned", "reqs": ["FR-PAIR-03/05", "SEC-N1"], "commit": null },
     { "id": "WP-10", "title": "App: pairing flow, agents/models/chat, DB, export", "milestone": "M2", "status": "planned", "reqs": ["FR-MOD-03", "FR-CHAT-03/06/07"], "commit": null }
   ],
   "gates": [
     { "name": "ruff check + format", "result": "pass", "ref": "§21.2" },
     { "name": "mypy --strict (core/ + security/)", "result": "pass", "ref": "§21.2" },
-    { "name": "pytest unit + integration + security", "result": "pass", "detail": "88 passed, 2 announced skips", "ref": "§21.5" },
+    { "name": "pytest unit + integration + security", "result": "pass", "detail": "102 passed, 2 announced skips (incl. 14 TLS-identity tests)", "ref": "§21.5" },
+    { "name": "TLS pin encoding (b64url no-pad) + lifecycle", "result": "pass", "detail": "create/renew-same-pin/rotate-new-pin/corrupt-refusal", "ref": "§17.3, §17.5, §10.7" },
     { "name": "contract tests vs recorded fixtures", "result": "skip-announced", "detail": "real fixtures not yet captured — owner action", "ref": "§10.3 rule 1" },
     { "name": "import-linter (§10.1 dependency rule)", "result": "pass", "detail": "3/3 contracts KEPT", "ref": "§10.1" },
     { "name": "OpenAPI drift check", "result": "pass", "ref": "§21.3, NFR-MAINT-01" },
@@ -39,15 +40,16 @@
     { "name": "pip-audit on committed lockfile", "result": "pass", "detail": "no known vulnerabilities", "ref": "§17.11" }
   ],
   "openQuestions": [
+    { "id": "QUESTION-102", "title": "Fingerprint prefix in ready log vs §17.10 allow-list", "status": "OPEN", "impact": "NFR-SEC-02 (P0) wins by precedence — pin omitted from logs until owner adds an allow-list key" },
     { "id": "QUESTION-101", "title": "Ports-layer interpretation of the §10.1 dependency rule", "status": "OPEN", "impact": "Conservative interpretation adopted and enforced by import-linter; owner confirmation welcome" },
     { "id": "ADR-017", "title": "Python build backend (setuptools)", "status": "PROPOSED", "impact": "Needed to install the Agent package; owner approval required" },
     { "id": "FIXTURES", "title": "Real LM Studio / Ollama response recordings", "status": "BLOCKING", "impact": "Blocks WP-05 contract tests as hard gates; capture via docs/fixtures/CAPTURE.md" },
     { "id": "Q-08", "title": "Project license (permissive vs copyleft)", "status": "OPEN", "impact": "zeroconf 0.151.5 is LGPL-2.1-or-later — flagged under CON-03" }
   ],
   "nextSteps": [
-    "WP-07 — TLS identity: ECDSA P-256 self-signed cert, SPKI pin calc, load/rotate (§17.5)",
-    "WP-08 — Pairing SM-PAIR + auth challenges + opaque Device Tokens + admin listener + QR",
+    "WP-08 — Pairing SM-PAIR + auth challenges + opaque Device Tokens + admin listener + QR (uses the WP-07 pin as QR `fp`)",
+    "WP-08 integration — uvicorn TLS 1.3 serving on the public listener (§17.3), admin HTTP listener on 127.0.0.1:8444 (§13.1)",
     "Owner: run docs/fixtures/CAPTURE.md on a real PC and commit fixtures",
-    "Owner: approve ADR-017, confirm QUESTION-101"
+    "Owner: approve ADR-017, confirm QUESTION-101 / QUESTION-102"
   ]
 }

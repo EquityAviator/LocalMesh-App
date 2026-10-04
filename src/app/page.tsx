@@ -37,14 +37,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface Milestone {
   id: string;
   name: string;
-  status: "done" | "next" | "planned";
+  status: "done" | "in-progress" | "next" | "planned";
   detail: string;
 }
 interface WorkPackage {
   id: string;
   title: string;
   milestone: string;
-  status: "done" | "next" | "planned";
+  status: "done" | "in-progress" | "next" | "planned";
   reqs: string[];
   commit: string | null;
 }
@@ -84,13 +84,23 @@ interface StatusPayload {
 function StatusBadge({ status }: { status: string }) {
   if (status === "done")
     return (
-      <Badge className="gap-1 border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+      <Badge className="gap-1 border-emerald-500/30 bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400">
         <CheckCircle2 className="h-3 w-3" /> done
+      </Badge>
+    );
+  if (status === "in-progress")
+    return (
+      <Badge className="gap-1 border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60 motion-reduce:hidden" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+        </span>
+        in progress
       </Badge>
     );
   if (status === "next")
     return (
-      <Badge className="gap-1 border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400">
+      <Badge className="gap-1 border-amber-500/30 bg-amber-500/15 text-amber-600 transition-colors hover:bg-amber-500/25 dark:text-amber-400">
         <Timer className="h-3 w-3" /> next
       </Badge>
     );
@@ -183,7 +193,7 @@ export default function Home() {
                     variant="outline"
                     size="sm"
                     onClick={load}
-                    className="gap-1.5"
+                    className="gap-1.5 transition-all hover:gap-2.5 focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ScanSearch className="h-3.5 w-3.5" /> Refresh
                   </Button>
@@ -241,17 +251,19 @@ export default function Home() {
                   <div
                     key={m.id}
                     title={m.detail}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                       m.status === "done"
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                        : m.status === "next"
-                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                          : "border-border text-muted-foreground"
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                        : m.status === "in-progress"
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+                          : m.status === "next"
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+                            : "border-border text-muted-foreground hover:border-muted-foreground/40"
                     }`}
                   >
                     {m.status === "done" ? (
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                    ) : m.status === "next" ? (
+                    ) : m.status === "in-progress" || m.status === "next" ? (
                       <Clock className="h-3.5 w-3.5" />
                     ) : (
                       <CircleDashed className="h-3.5 w-3.5" />
@@ -279,7 +291,7 @@ export default function Home() {
                     {data.workPackages.map((wp) => (
                       <div
                         key={wp.id}
-                        className="flex items-start justify-between gap-3 p-4"
+                        className="flex items-start justify-between gap-3 p-4 transition-colors hover:bg-muted/40"
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -417,44 +429,44 @@ export default function Home() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border p-3">
+                    <div className="rounded-lg border p-3 transition-colors hover:border-muted-foreground/40">
                       <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                         <FileCode2 className="h-3 w-3" /> agent src
                       </p>
-                      <p className="mt-1 text-lg font-semibold">
+                      <p className="mt-1 text-lg font-semibold tabular-nums">
                         {data.live.stats.agentSrcLoc.toLocaleString()}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         LOC · {data.live.stats.agentSrcFiles} files
                       </p>
                     </div>
-                    <div className="rounded-lg border p-3">
+                    <div className="rounded-lg border p-3 transition-colors hover:border-muted-foreground/40">
                       <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                         <FlaskConical className="h-3 w-3" /> tests
                       </p>
-                      <p className="mt-1 text-lg font-semibold">
+                      <p className="mt-1 text-lg font-semibold tabular-nums">
                         {data.live.stats.testFiles}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        test files · 90 cases
+                        test files · 104 cases
                       </p>
                     </div>
-                    <div className="rounded-lg border p-3">
+                    <div className="rounded-lg border p-3 transition-colors hover:border-muted-foreground/40">
                       <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                         <Activity className="h-3 w-3" /> fake backends
                       </p>
-                      <p className="mt-1 text-lg font-semibold">
+                      <p className="mt-1 text-lg font-semibold tabular-nums">
                         {data.live.stats.fakeBackendFiles}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         shared test asset files
                       </p>
                     </div>
-                    <div className="rounded-lg border p-3">
+                    <div className="rounded-lg border p-3 transition-colors hover:border-muted-foreground/40">
                       <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                         <TriangleAlert className="h-3 w-3" /> open questions
                       </p>
-                      <p className="mt-1 text-lg font-semibold">
+                      <p className="mt-1 text-lg font-semibold tabular-nums">
                         {data.live.stats.openQuestionEntries}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
