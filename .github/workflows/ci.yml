@@ -1,0 +1,130 @@
+# LocalMesh AI PR pipeline (LM-ARCH-001 §21.4) — M0 staging.
+#
+# Stage order follows §21.4. Stages whose content arrives with later WPs
+# (contract tests vs fixtures -> WP-05/M1; npm audit / Android APK -> apps/mobile)
+# run as transparent, *announced* skips while the repo has no such project yet,
+# and become hard gates the moment their inputs appear:
+#   - the cleartext manifest scan flips from vacuous pass to active scan as soon
+#     as any AndroidManifest.xml exists (SEC-N1);
+#   - the Android build step FAILS once an Android project exists without CI wiring;
+#   - pip-audit activates with the WP-02 lockfile (§17.11: pinned requirements
+#     with hashes, committed).
+# Release job (tags) is a scaffold; real release gates land at M9 (§22.1).
+
+name: pr-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["*"]
+
+permissions:
+  contents: read
+
+jobs:
+  agent-contracts-tests:
+    name: lint + typecheck + tests + drift + import-linter + security gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # §21.2: Agent runtime Python 3.12
+
+      - name: Install agent dependencies
+        working-directory: agent
+        run: |
+          if [ -f requirements.txt ]; then
+            # Pinned install (§17.11). The Agent package itself is used from source
+            # via PYTHONPATH (see lint-imports step) so CI does not depend on a
+            # build backend; packaging is exercised from M9 (§21.6).
+            pip install -r requirements.txt
+          else
+            echo "::warning::agent/requirements.txt not generated yet (WP-02); installing unpinned extras — transitional M0 state only (§17.11 requires pinned lockfiles once WP-02 merges)"
+            pip install -e '.[dev,nvidia]'
+          fi
+
+      - name: Lint (ruff)
+        run: |
+          ruff check --config agent/pyproject.toml agent tools scripts
+          ruff format --check --config agent/pyproject.toml agent tools scripts
+
+      - name: Typecheck (mypy --strict on core/ and security/, §21.2)
+        working-directory: agent
+        run: mypy --strict src/localmesh_agent/core src/localmesh_agent/security
+
+      - name: Unit tests (§21.5)
+        run: bash scripts/pytest_layer.sh agent/tests/unit
+
+      - name: Contract tests vs recorded fixtures (§21.5)
+        run: bash scripts/pytest_layer.sh agent/tests/contract
+
+      - name: Integration tests — agent + fake backends (§21.5)
+        run: bash scripts/pytest_layer.sh tools/fake-backends/tests agent/tests/integration
+
+      - name: Security tests (§21.5, §17.13)
+        run: bash scripts/pytest_layer.sh agent/tests/security
+
+      - name: Import-linter — dependency rule (§10.1)
+        working-directory: agent
+        env:
+          PYTHONPATH: ${{ github.workspace }}/agent/src
+        run: lint-imports --config .importlinter
+
+      - name: OpenAPI drift check (§21.3, NFR-MAINT-01, ADR-015)
+        run: python scripts/check_openapi_drift.py
+
+      - name: Security gate — Android manifest cleartext scan (SEC-N1, §17.9)
+        run: python scripts/security/scan_cleartext_manifest.py
+
+      - name: Security gate — Content-column schema scan (SEC-N3, CON-02, ADR-011)
+        run: python scripts/security/scan_content_columns.py
+
+      - name: Security gate — secret scan (SEC-N5, §17.11)
+        run: python scripts/security/scan_secrets.py
+
+      - name: Security gate — pip-audit (§17.11)
+        working-directory: agent
+        run: |
+          if [ -f requirements.txt ]; then
+            pip-audit -r requirements.txt --progress-spinner off
+          else
+            echo "::notice::pip-audit skipped: agent/requirements.txt not generated yet (activates with WP-02)"
+          fi
+
+      - name: Security gate — npm audit (§17.11)
+        run: |
+          if [ -f apps/mobile/package.json ]; then
+            echo "::error::apps/mobile JS project detected but npm audit wiring not implemented (§21.4)"; exit 1
+          else
+            echo "::notice::npm audit skipped: no apps/mobile/package.json yet"
+          fi
+
+      - name: Build Android debug APK (§21.4)
+        run: |
+          if [ -d apps/mobile/android ] || compgen -G "apps/mobile/*.gradle*" > /dev/null; then
+            echo "::error::Android project detected but CI APK build wiring not implemented (§21.4)"; exit 1
+          else
+            echo "::notice::Android build skipped: no Android project yet (apps/mobile is an M0 placeholder)"
+          fi
+
+  release-gate:
+    # §21.4 "on tags: release build + release-gate scan (SEC-N6) + checksums".
+    # Real release gates, signed artifacts and checksums are delivered at M9
+    # (§22.1 M9); until then this job only re-runs the repo-level security gates.
+    if: startsWith(github.ref, 'refs/tags/')
+    name: release-gate (scaffold until M9)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Release-gate scans (SEC-N6) — scaffold, full gates at M9
+        run: |
+          echo "::notice::Release build/gates/checksums are delivered at M9 (§22.1 M9)."
+          python scripts/security/scan_cleartext_manifest.py
+          python scripts/security/scan_content_columns.py
+          python scripts/security/scan_secrets.py
