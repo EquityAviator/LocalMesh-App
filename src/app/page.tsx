@@ -17,8 +17,11 @@ import {
   FlaskConical,
   GitBranch,
   GitCommitHorizontal,
+  KeyRound,
+  Network,
   ScanSearch,
   ShieldCheck,
+  Sparkles,
   Stethoscope,
   Timer,
   TriangleAlert,
@@ -93,6 +96,20 @@ interface DoctorSection {
   ladder: DoctorLadderRow[];
   checks: DoctorCheck[];
 }
+interface MeshEndpoint {
+  method: "GET" | "POST" | "DELETE";
+  path: string;
+  auth: "public" | "token";
+  scope: string | null;
+  milestone: string;
+  apiId: string;
+  note: string;
+}
+interface MeshApiSection {
+  basePath: string;
+  authNote: string;
+  endpoints: MeshEndpoint[];
+}
 interface StatusPayload {
   project: string;
   governingSpec: string;
@@ -103,6 +120,7 @@ interface StatusPayload {
   securityTests: SecurityTest[];
   openQuestions: OpenQuestion[];
   nextSteps: string[];
+  meshApi: MeshApiSection;
   doctor: DoctorSection;
   live: {
     git: { hash: string; subject: string; date: string };
@@ -964,6 +982,106 @@ export default function Home() {
               </div>
             </motion.section>
 
+            {/* Mesh API surface (§13.1 · §13.2) — the served public contract */}
+            <motion.section
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.3 }}
+              aria-labelledby="api-h"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h2
+                  id="api-h"
+                  className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  <Network className="h-3.5 w-3.5" aria-hidden /> Mesh API surface
+                  (§13.1 · §13.2)
+                </h2>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {data.meshApi.endpoints.length} endpoints served · {data.meshApi.basePath}
+                </span>
+              </div>
+              <Card className="transition-shadow hover:shadow-md">
+                <CardContent className="p-0">
+                  <div className="divide-y divide-border">
+                    {data.meshApi.endpoints.map((ep) => {
+                      const post = ep.method === "POST";
+                      const del = ep.method === "DELETE";
+                      const newest = ep.milestone === "M5";
+                      return (
+                        <div
+                          key={ep.apiId}
+                          className={`group flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 transition-colors hover:bg-muted/40 sm:flex-nowrap ${
+                            newest ? "bg-emerald-500/[0.04]" : ""
+                          }`}
+                        >
+                          <span
+                            className={`inline-flex w-16 shrink-0 justify-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide transition-transform group-hover:scale-[1.03] ${
+                              post
+                                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : del
+                                  ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
+                                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            }`}
+                          >
+                            {ep.method}
+                          </span>
+                          <code
+                            className="shrink-0 font-mono text-xs text-foreground"
+                            title={ep.apiId}
+                          >
+                            {data.meshApi.basePath}
+                            {ep.path}
+                          </code>
+                          <Badge
+                            variant="outline"
+                            className={`shrink-0 text-[9px] uppercase tracking-wider transition-colors ${
+                              ep.auth === "public"
+                                ? "text-muted-foreground"
+                                : "border-foreground/30 bg-foreground/[0.04] text-foreground"
+                            }`}
+                          >
+                            {ep.auth === "public" ? (
+                              "no auth"
+                            ) : (
+                              <>
+                                <KeyRound className="h-2.5 w-2.5" /> token
+                              </>
+                            )}
+                          </Badge>
+                          {ep.scope && (
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 border-border bg-muted/60 font-mono text-[9px] text-foreground/80"
+                            >
+                              {ep.scope}
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 font-mono text-[9px] text-muted-foreground"
+                          >
+                            {ep.apiId}
+                          </Badge>
+                          {newest && (
+                            <Badge className="shrink-0 border-emerald-500/30 bg-emerald-500/10 text-[9px] text-emerald-600 dark:text-emerald-400">
+                              <Sparkles className="h-2.5 w-2.5" /> new
+                            </Badge>
+                          )}
+                          <span className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:truncate sm:ml-auto sm:max-w-[38%]">
+                            {ep.note}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="border-t border-dashed border-border px-4 py-2 text-[10px] leading-relaxed text-muted-foreground">
+                    {data.meshApi.authNote}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.section>
+
             {/* Open questions */}
             <motion.section
               initial={{ opacity: 0, y: 8 }}
@@ -1032,7 +1150,7 @@ export default function Home() {
                 id="next-h"
                 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
               >
-                Next milestone — M3 / M2 completion (§22.1)
+                Next milestone — M5 agent completion / M2-M4 app side (§22.1)
               </h2>
               <Card className="transition-shadow hover:shadow-md">
                 <CardContent className="p-4">
