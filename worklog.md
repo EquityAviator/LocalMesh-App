@@ -99,3 +99,72 @@ Stage Summary:
 1. **Owner actions needed:** (a) run `docs/fixtures/CAPTURE.md` on a real PC and commit fixtures (blocks WP-05 contract tests); (b) approve/reject ADR-017 (setuptools); (c) confirm QUESTION-101 interpretation; (d) awareness: zeroconf is LGPL-2.1-or-later (CON-03/Q-08).
 2. **Not verified (must not be assumed):** GitHub Actions actually executing (repo not pushed); repo-activity stats for candidates (API 403); Android 16/17 runtime behaviour of react-native-zeroconf / op-sqlite (M2/M3 device spikes); real Backend response shapes (fixtures pending).
 3. **Next milestone (M1) entry point:** WP-04 (config, allow-list logging, store + 0001_init.sql migration) → WP-05 (adapters + registry; needs fixtures) → WP-06 (scheduler, chat SSE, cancel, /health, CLI run). Re-read §22.3 context bundles before each WP.
+
+---
+Task ID: 5 (WP-04)
+Agent: Z.ai Code (main agent)
+Task: M1 WP-04 — Agent config, allow-list logging, store + migrations — branch `wp-04-agent-base`.
+
+Work Log:
+- Loaded §1/§2.3/§3 + WP-04 context (Appendix E, §14.1, §17.10, §20.2) per §22.3.
+- `config.py`: pydantic-settings Settings mirroring Appendix E verbatim; unknown keys rejected (extra=forbid); loopback-only backend base_url (NFR-SEC-03/SEC-N2/§10.3); pairing TTL ≤ 600 (FR-PAIR-02); per-OS default data dir [DESIGN]; `LOCALMESH_CONFIG` resolution; owner-only data dir (§14.1).
+- `observability/logging.py`: §17.10 allow-list verbatim (16 keys) as JSON formatter; ComponentLogger that MERGES extras (stdlib LoggerAdapter.process on 3.12 clobbers call-site `extra` — trap found and fixed); deny-by-default.
+- `store/sqlite.py` + `0001_init.sql`: §14.1 schema applied verbatim via PRAGMA user_version; WAL; devices/tokens(hash-only)/audit/settings/model_cache repositories; §20.2 closed audit vocabulary; meta keys gated by the §17.10 allow-list (StoreError otherwise); §14.1 retention (90 d / 10 000 rows rolling, token expiry) in `Store.prune`.
+- Tests: 33 unit tests (config, allow-list incl. canary drop, store drift guard vs §14.1 columns, retention).
+- Fixed stale testDependencyRule test to locate lint-imports in the sandbox venv.
+
+Stage Summary:
+- Gate green (ruff/mypy-strict/unit/lint-imports/drift/3 security scans); merged `--no-ff` to main.
+
+---
+Task ID: 6 (WP-05)
+Agent: Z.ai Code (main agent)
+Task: M1 WP-05 — Backend adapters + CapabilityRegistry — branch `wp-05-adapters-registry`.
+
+Work Log:
+- Context bundle: §6.1, §6.2, §10.2–10.4, §13.5, §16.3.
+- `adapters/ports.py`: §10.2 Protocols verbatim (InferenceBackend/HardwareProbe/DiscoveryAdvertiser/TailnetProbe/Store/Clock) + shared bottom-layer types (QUESTION-101 interpretation: port-signature types live in ports, re-exported by core/entities).
+- `core/errors.py`: Appendix D verbatim mapping; "maybe"-retryable rows → conservative False [DESIGN].
+- `core/entities.py`: ModelEntry with §13.5 exact `to_api_json` (null + provenance; never guessed); Device; MeshStats; RFC 9562 UUIDv7 (§14.3 ids, no new dep).
+- `adapters/backends/openai_compat.py`: generic adapter + §10.3-rule-5 SSE parser (data lines, [DONE], comments, partial UTF-8 across chunks, \r\n); defensive JSON helpers; schema-drift warnings (no Content); timeouts connect 3 s / first-token 120 s / idle 60 s / total 15 min.
+- `lmstudio.py`: native `/api/v1/models` parsed to verified `id` only (§6.1 fields UNVERIFIED — no name-guessing), fallback `GET /v1/models`; load/unload POSTs tolerate any 2xx (shape UNVERIFIED, flagged).
+- `ollama.py`: tags+ps+show(cached); loaded state from /api/ps; no-auth by construction (never sends Authorization); keep-warm native ping (§6.2 keep_alive-on-/v1 UNVERIFIED).
+- `core/registry.py`: §16.3 merge algorithm verbatim (concurrent probe 3 s, down → previous entries state=unknown, user overrides source='user', sort, model_cache snapshot, generated_at); background poll 15 s.
+- import-linter caught core→store.sqlite (TYPE_CHECKING import): fixed by typing registry against the `Store` port (ports refined with the two model_cache methods core consumes).
+- Tests: 12 SSE-parser units; 7 registry units (never-emits-guessed AC of FR-MOD-02); contract tests as announced skips pending recorded fixtures (docs/fixtures/CAPTURE.md); 10 integration tests vs WP-03 fakes incl. FR-MOD-01 detection AC, 500→BACKEND_UNAVAILABLE, disconnect→BACKEND_PROTOCOL, cancel→CANCELLED.
+
+Stage Summary:
+- 59 passed / 2 announced skips; gate green; merged `--no-ff` to main.
+
+---
+Task ID: 7 (WP-06)
+Agent: Z.ai Code (main agent)
+Task: M1 WP-06 — Scheduler + chat SSE + cancel + /models + /health + CLI run — branch `wp-06-scheduler-chat`.
+
+Work Log:
+- Context bundle: §10.4, §13.2 (API-CHAT-01), §13.4, §13.7, §13.8, §15.3, §16.4.
+- `core/scheduler.py`: §16.4 admission (per-device limit → backend slot → global FIFO queue → QUEUE_FULL+Retry-After est. from recent durations); cancel / cancel_by_device; queued_ms; explicit slot-holding flag (concurrency>1 release bug caught).
+- `core/policy.py`: §13.6 allow-list (unknown → 422 + details.unknown_fields), roles, string content v1, 200-message limit, numeric ranges; §13.8 limits.
+- `core/router.py`: pinned resolution; split on FIRST '::' (§14.3); MODEL_NOT_FOUND.
+- API layer: `errors.py` (§13.4 envelope + Retry-After on QUEUE_FULL), `deps.py` (fail-closed 401 without dev mode, SEC-N4/SEC-N6; dev-loopback principal only with the flag), `v1/models.py` (API-MODEL-01), `v1/health.py` (API-HEALTH-01 incl. queue block), `v1/requests.py` (API-REQ-01: 202 cancelling / 404 unknown-or-finished via status_override [DESIGN — Appendix D gap documented] / 403 other device, ownership checked BEFORE cancelling), `v1/chat.py` (§13.7 wire format: mesh.meta → OpenAI chunks → `: ping` 15 s while queued → mesh.stats → [DONE]; mesh.error terminal without [DONE]; cancel = no further events; resolve+admit BEFORE response start so 404/429 carry envelopes; non-stream returns OpenAI completion + x_mesh.stats).
+- `app.py`: factory per §10.5/§10.6 subset (config→logging→migrations→identity ag_+UUIDv7→adapters→registry refresh→polling; X-Mesh-Api-Version/X-Mesh-Request-Id/no-store middleware; 2 MiB body limit → 413; keyring auth_ref lookup, §17.6).
+- `cli.py`: `run` refuses to start without `--dev-insecure-loopback` (SEC-N6; §17.9 binds 127.0.0.1 only); pair/devices/revoke/doctor report their milestones (no invented surface).
+- Adapter fix: cancel ≤ 1 s also during pre-first-byte (send raced against token; root cause of a 2.5 s stall was asyncio.wait missing return_when=FIRST_COMPLETED).
+- Tests: 8 policy + 8 scheduler + 2 router units; 10 chat SSE integration tests (wire format, headers, non-stream, 422/404/413 envelopes, fail-closed 401, cancel ≤ 2 s via REAL uvicorn listener — ASGITransport buffers bodies so it cannot exercise mid-stream cancel); `tests/security/test_canary.py` = TC-SEC-01 (canary prompt → grep data dir + log file + stdout: absent).
+- M1 smoke test on loopback: CLI run + fake backend + curl → /models envelope, SSE token stream, /health ok — M1 exit behaviour demonstrated with fakes.
+
+Stage Summary:
+- 88 passed / 2 announced skips; full gate green; merged `--no-ff` to main.
+
+---
+Task ID: 8 — M1 integration verification & governance
+Agent: Z.ai Code (main agent)
+Task: M1 gate on merged main, DoD, handover.
+
+Work Log:
+- Full local gate on main: ruff check+format PASS; mypy --strict (core+security) PASS; pytest unit/contract/integration/security 88 passed, 2 announced contract skips (fixtures pending owner capture, §10.3 rule 1); import-linter 3/3 KEPT; OpenAPI drift OK; cleartext/content-columns/secret scans PASS.
+- Appendix G per WP: WP-04 (FR-AGT-03 tests; no contract divergence; §17.10 allow-list; §14.1 schema verbatim) — done; WP-05 (FR-MOD-01 via fakes, FR-MOD-02 schema test; UNVERIFIED fields left null; contract tests await fixtures) — done with announced skips; WP-06 (FR-CHAT-01/02/04/05 tests incl. canary + cancel ≤ 2 s; SSE format per §13.7; error envelopes per §13.4) — done.
+- M1 exit status: "curl on loopback streams tokens" demonstrated against fake Backends (real-Backend verification pending fixture capture + owner-run); contract tests flip to hard gates when recordings land.
+
+Stage Summary:
+- M1 (dev-insecure loopback core) implemented and verified within scope fence; real-backend contract coverage remains the standing M2 entry blocker (owner action: docs/fixtures/CAPTURE.md).

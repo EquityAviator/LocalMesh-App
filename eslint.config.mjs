@@ -44,7 +44,35 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+  // Global ignores — LocalMesh Python monorepo + sandbox artifacts are NOT
+  // part of the Next.js app; never lint them (worklog.md boundary rule).
+  // NOTE: this object must contain ONLY `ignores` to act as a global ignore
+  // block in flat config.
+  ignores: [
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "examples/**",
+    "skills",
+    "agent/**",
+    "agent/.venv/**",
+    "**/.venv/**",
+    "**/__pycache__/**",
+    "tools/**",
+    "scripts/**",
+    "research/**",
+    "docs/**",
+    "upload/**",
+    "apps/**",
+    "packages/**",
+    "control-plane/**",
+    "tests/**",
+    "download/**",
+    "mini-services/**",
+    ".zscripts/**",
+  ],
 }];
 
 export default eslintConfig;
