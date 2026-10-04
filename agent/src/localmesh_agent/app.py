@@ -27,6 +27,11 @@ from fastapi.responses import JSONResponse
 from localmesh_agent.adapters.backends.lmstudio import LMStudioBackend
 from localmesh_agent.adapters.backends.ollama import OllamaBackend
 from localmesh_agent.adapters.backends.openai_compat import OpenAICompatBackend
+from localmesh_agent.adapters.discovery.mdns import (
+    build_mdns_advertiser,
+    build_service_ad,
+    resolve_advertise_addresses,
+)
 from localmesh_agent.adapters.ports import InferenceBackend, SystemClock
 from localmesh_agent.api.errors import mesh_error_handler
 from localmesh_agent.api.v1 import auth, chat, health, info, models, pair, requests
@@ -81,15 +86,20 @@ def build_adapters(settings: Settings) -> list[InferenceBackend]:
 def advertised_endpoints(settings: Settings, *, dev_insecure: bool) -> tuple[str, ...]:
     """https endpoint(s) advertised in the pairing QR (§17.4 `ep` param).
 
-    [DESIGN — recorded in OPEN_QUESTIONS QUESTION-103]: the Agent's own LAN
-    IP advertisement arrives with WP-11 (mDNS). Until then the QR carries
-    the best non-invented endpoint available: `https://<hostname>:<port>`
-    when the OS hostname resolves; in dev-insecure mode additionally the
-    loopback URL the §17.9 flag actually binds (cleartext, dev-only).
+    WP-11: when a LAN IPv4 can be resolved on the selected interfaces
+    (§16.2 interface selection), `https://<lan-ip>:<port>` leads the list
+    (QUESTION-103 item 5 resolved on the implementation side; the reading
+    still awaits owner confirmation). The hostname form remains a fallback
+    candidate when resolution fails; dev-insecure keeps the loopback URL
+    the §17.9 flag actually binds (cleartext, dev-only).
     """
     endpoints: list[str] = []
     port = settings.listen.port
     if not dev_insecure:
+        # §16.2 interface selection — same addresses mDNS will advertise,
+        # even when advertisement itself is disabled (`[mdns] enabled=false`).
+        for ip in resolve_advertise_addresses(settings.mdns.interfaces)[:1]:
+            endpoints.append(f"https://{ip}:{port}")
         import socket
 
         try:
@@ -167,6 +177,16 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         endpoints=advertised_endpoints(settings, dev_insecure=dev_insecure),
     )
 
+    # -- WP-11 discovery (§10.6 step 5, FR-AGT-04, §16.2): the advertiser
+    #    is created here but STARTED at lifespan-startup, after the registry
+    #    is warm (§10.6 step order). `po` mirrors API-INFO-01 pairing_open.
+    app.state.mdns = None
+    if settings.mdns.enabled:
+        app.state.mdns = build_mdns_advertiser(
+            settings.mdns.interfaces,
+            pairing_open_fn=app.state.pairing.pairing_open,
+        )
+
     # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
     # (info/pair/auth). device.py arrives with WP-15 (hardware probes,
     # §22.2); tasks.py with M7 (§13.9) — not registered here (scope fence).
@@ -219,6 +239,22 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         # §16.3 background polling continues afterwards.
         await registry.refresh()
         registry.start_polling()
+        # §10.6 step 5 (WP-11): start the mDNS advertisement on the selected
+        # interfaces. Failure/degradation must not block Agent start (T-21:
+        # advertisements are untrusted hints; MdnsAdvertiser logs, not raises).
+        if app.state.mdns is not None:
+            ad = build_service_ad(
+                str(app.state.agent_id),
+                settings.agent.display_name,
+                settings.listen.port,
+                tls_identity.spki_sha256,
+                pairing_open=app.state.pairing.pairing_open(),
+            )
+            try:
+                await app.state.mdns.start(ad)
+            except Exception:  # noqa: BLE001 — discovery degrades, never blocks
+                app.state.mdns = None
+                log.warning("mdns_start_failed", extra={"component": "mdns", "status": "error"})
         log.info(
             "agent_ready",
             extra={
@@ -229,6 +265,9 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        if app.state.mdns is not None:
+            await app.state.mdns.stop()
+            app.state.mdns = None
         await registry.stop_polling()
         for adapter in adapters:
             close = getattr(adapter, "aclose", None)
