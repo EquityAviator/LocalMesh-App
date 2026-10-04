@@ -26,11 +26,28 @@ def test_cli_main_runs() -> None:
     assert main([]) == 0
 
 
-def test_cli_doctor_reports_milestone() -> None:
-    """`doctor` reports its milestone (WP-13/M3 per §22.1)."""
+def test_cli_doctor_runs_and_reports_findings(tmp_path: object, capsys: object) -> None:
+    """WP-13 (M3): `doctor` runs the §18.4 ladder and prints findings.
+
+    Exit code is level-mapped [DESIGN]: 0 ok/info, 1 warn, 2 error — the
+    exact findings depend on the host, so this asserts the contract shape
+    (header + ordered checks) rather than specific levels.
+    """
+    from pathlib import Path
+
     from localmesh_agent.cli import main
 
-    assert main(["doctor"]) == 0
+    config = Path(str(tmp_path)) / "config.toml"  # type: ignore[operator]
+    data_dir = Path(str(tmp_path)) / "data"  # type: ignore[operator]
+    config.write_text(f'[agent]\ndata_dir = "{data_dir}"\n', encoding="utf-8")
+
+    code = main(["doctor", "--config", str(config)])
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "§18.4 connection ladder" in out
+    assert "config" in out  # check 1 always runs
+    assert code in (0, 1, 2)  # level-mapped exit codes
+    if code != 0:
+        assert "worst finding level" in out
 
 
 def test_cli_pair_without_agent_fails_actionable(capsys: object) -> None:
