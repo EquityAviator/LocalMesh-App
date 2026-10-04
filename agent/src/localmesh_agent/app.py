@@ -27,9 +27,10 @@ from fastapi.responses import JSONResponse
 from localmesh_agent.adapters.backends.lmstudio import LMStudioBackend
 from localmesh_agent.adapters.backends.ollama import OllamaBackend
 from localmesh_agent.adapters.backends.openai_compat import OpenAICompatBackend
-from localmesh_agent.adapters.ports import InferenceBackend
+from localmesh_agent.adapters.ports import InferenceBackend, SystemClock
 from localmesh_agent.api.errors import mesh_error_handler
-from localmesh_agent.api.v1 import chat, health, models, requests
+from localmesh_agent.api.v1 import auth, chat, health, info, models, pair, requests
+from localmesh_agent.api.v1.auth import ChallengeStore
 from localmesh_agent.config import Settings
 from localmesh_agent.core.entities import new_uuid7
 from localmesh_agent.core.errors import MeshError
@@ -37,10 +38,16 @@ from localmesh_agent.core.registry import CapabilityRegistry
 from localmesh_agent.core.router import Router
 from localmesh_agent.core.scheduler import Scheduler
 from localmesh_agent.observability.logging import configure_logging, get_logger
+from localmesh_agent.security.devices import DeviceService
+from localmesh_agent.security.pairing import PairingService
+from localmesh_agent.security.ratelimit import SlidingWindowLimiter
 from localmesh_agent.security.tls import load_or_create_identity
+from localmesh_agent.security.tokens import TokenService
 from localmesh_agent.store.sqlite import Store
 
 log = get_logger("app")
+
+AGENT_VERSION = "0.1.0"  # NFR-COMP-02 semantic version (surfaced via /info)
 
 
 def build_adapters(settings: Settings) -> list[InferenceBackend]:
@@ -71,14 +78,41 @@ def build_adapters(settings: Settings) -> list[InferenceBackend]:
     return adapters
 
 
+def advertised_endpoints(settings: Settings, *, dev_insecure: bool) -> tuple[str, ...]:
+    """https endpoint(s) advertised in the pairing QR (§17.4 `ep` param).
+
+    [DESIGN — recorded in OPEN_QUESTIONS QUESTION-103]: the Agent's own LAN
+    IP advertisement arrives with WP-11 (mDNS). Until then the QR carries
+    the best non-invented endpoint available: `https://<hostname>:<port>`
+    when the OS hostname resolves; in dev-insecure mode additionally the
+    loopback URL the §17.9 flag actually binds (cleartext, dev-only).
+    """
+    endpoints: list[str] = []
+    port = settings.listen.port
+    if not dev_insecure:
+        import socket
+
+        try:
+            hostname = socket.gethostname()
+            if hostname:
+                endpoints.append(f"https://{hostname}:{port}")
+        except OSError:  # pragma: no cover - defensive
+            pass
+    else:
+        endpoints.append(f"http://127.0.0.1:{port}")
+    return tuple(endpoints)
+
+
 def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     """App factory (§10.5: all services created here; no global mutable state)."""
     configure_logging(settings.logging.level)
-    app = FastAPI(title="LocalMesh Agent", version="0.1.0", docs_url=None, redoc_url=None)
+    app = FastAPI(title="LocalMesh Agent", version=AGENT_VERSION, docs_url=None, redoc_url=None)
     app.state.settings = settings
     app.state.dev_insecure = dev_insecure  # SEC-N6: default OFF (§17.9)
+    app.state.agent_version = AGENT_VERSION
     app.state.started_mono = __import__("time").monotonic()
-    app.state.clock = _ClockForHealth()
+    clock = SystemClock()  # §10.2 Clock: injectable; one instance per app
+    app.state.clock = clock
 
     # §10.6 step 2-3: migrations + identity (agent_id + TLS identity, WP-07).
     data_dir = settings.ensure_data_dir()
@@ -112,11 +146,33 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         max_queued=settings.limits.max_queued,
     )
     app.state.router = Router(registry, {a.id: a for a in adapters})
-    # §14.3 dev-mode Device identity (M1 loopback only; replaced by WP-08 auth).
+    # §14.3 dev-mode Device identity (M1 loopback only; token auth is WP-08).
     app.state.dev_device_id = f"dv_{new_uuid7()}"
 
-    # Routers (§13.1 — only the M1-scope endpoints are wired; pair/auth/device/
-    # tasks arrive with their milestones and are not registered here).
+    # -- WP-08 security services (§10.4 PairingService/TokenService/
+    #    DeviceService; §13.8 limiter; all state lives on app.state, §10.5) --
+    app.state.limiter = SlidingWindowLimiter()
+    app.state.devices = DeviceService(store, on_revoke=app.state.scheduler.cancel_by_device)
+    app.state.tokens = TokenService(store, clock)
+    app.state.challenges = ChallengeStore()
+    app.state.pairing = PairingService(
+        store=store,
+        devices=app.state.devices,
+        clock=clock,
+        ttl_seconds=settings.pairing.ttl_seconds,
+        require_confirmation=settings.pairing.require_confirmation,
+        agent_id=str(app.state.agent_id),
+        display_name=settings.agent.display_name,
+        spki_pin=tls_identity.spki_sha256,
+        endpoints=advertised_endpoints(settings, dev_insecure=dev_insecure),
+    )
+
+    # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
+    # (info/pair/auth). device.py arrives with WP-15 (hardware probes,
+    # §22.2); tasks.py with M7 (§13.9) — not registered here (scope fence).
+    app.include_router(info.router)
+    app.include_router(pair.router)
+    app.include_router(auth.router)
     app.include_router(models.router)
     app.include_router(health.router)
     app.include_router(chat.router)
@@ -181,20 +237,6 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         store.close()
 
     return app
-
-
-class _ClockForHealth:
-    """Minimal Clock for the health endpoint's uptime (§10.2 Clock intent)."""
-
-    def now_monotonic(self) -> float:
-        import time
-
-        return time.monotonic()
-
-    def now_wall(self) -> int:
-        import time
-
-        return int(time.time())
 
 
 def _now() -> int:

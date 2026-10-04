@@ -20,23 +20,41 @@ Format (append below, keep reverse-chronological order — newest first):
 Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARCH-001
 §24); agent-raised questions use QUESTION-101 onwards to avoid ID collisions.
 
-## QUESTION-101 — Ports layer representation in the §10.1 dependency rule
+## QUESTION-103 — WP-08 underspecified protocol/admin-surface details
 - Date: 2026-10-04
-- Raised by: WP-01 (import-linter contracts, `agent/.importlinter`)
-- Question: §10.1 states both "api → core → ports" and "core imports nothing from
-  api/adapters/store **implementations**", while the layout places the protocols in
-  `adapters/ports.py`. Reading "implementations" as excluding the `ports` module
-  (i.e. core MAY import `adapters.ports`, but no other `adapters.*`), is that the
-  intended mapping — or should a dedicated `ports/` package exist at `M1`?
-- Context/evidence: LM-ARCH-001 §10.1 ("Dependency rule (enforced by an
-  import-linter test)") and §10.2 ("Ports (interfaces the core depends on)");
-  contracts currently enforced: layers `api > core > adapters.ports`; forbidden:
-  core → {api, store, adapters.backends/.hardware/.discovery/.tailscale/.keyring_store,
-  fastapi, httpx, sqlite3, psutil}.
-- Why we must not guess: getting this wrong shapes every `core`/`adapters` import
-  from WP-05 onwards; unwinding later is expensive.
-- Default if unanswered: keep the implemented interpretation (conservative; satisfies
-  both statements textually). Not blocking M0 exit; revisit before WP-05.
+- Raised by: WP-08 (pairing/auth/admin implementation)
+- Question: LM-ARCH-001 leaves several WP-08 details open. Please confirm (or
+  correct) the interpretations shipped with WP-08:
+  1. **HMAC framing of string IDs** (§13.2): `agent_id`/`pair_id`/`device_id`/
+     `challenge_id` are framed as their UTF-8 bytes verbatim (prefixes included);
+     `client_nonce` and SPKI/DER values as raw bytes.
+  2. **Auth-message nonce encoding** (§13.2 API-AUTH-02): the message is
+     `"\n"`-joined UTF-8 text, so `nonce` appears as its base64url (no padding)
+     STRING as issued — raw 32 bytes would break the "(UTF-8)" property.
+  3. **Pair/status after terminal states** (§15.2 vs §13.2 API-PAIR-02): §15.2
+     destroys the secret on DENIED/EXPIRED/LOCKED entry, but §13.2 defines
+     pollable `denied`/`approved` statuses and §15.4 shows the phone polling
+     after the decision. Shipped behaviour: DENIED/APPROVED keep the secret for
+     a 60 s delivery window (then close); EXPIRED/LOCKED destroy immediately and
+     answer 410/429; a JUST-expired session answers 410 (FR-PAIR-02 "use after
+     TTL → 410") via a (pair_id, until) tombstone that never holds the secret.
+  4. **Admin route names** beyond the spec-named `POST /admin/tls/rotate` (§17.5):
+     §15.4/§15.6 name the operator ACTIONS but not paths. Shipped (loopback-only,
+     rename-safe): `POST /admin/pair/open|approve|deny|close`, `GET
+     /admin/pair/pending`, `GET /admin/devices`, `POST
+     /admin/devices/{id}/revoke`, `POST /admin/tls/rotate`. Admin token is
+     carried as `Authorization: Bearer` (§17.6 forbids URLs/query strings but
+     names no header).
+  5. **QR `ep` before WP-11 mDNS** (§17.4): the QR advertises
+     `https://<hostname>:<listen.port>` as the best non-invented endpoint;
+     proper LAN-IP advertisement arrives with WP-11.
+- Context/evidence: §13.2, §15.2, §15.4, §17.4–§17.6; implementation under
+  `agent/src/localmesh_agent/security/` and `admin_app.py`; FR-PAIR-02 ACs.
+- Why we must not guess: items 1-2 change the WIRE FORMAT (a phone built
+  against a different reading fails proofs); item 3 is user-visible pairing UX;
+  item 4-5 are operator/app-visible surfaces.
+- Default if unanswered: ship the readings above (conservative, documented
+  inline); any change is a small, localized diff.
 - Status: OPEN
 
 ## QUESTION-102 — Fingerprint prefix in the "ready" log vs the §17.10 allow-list
@@ -57,3 +75,23 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
   precedence; the pin is served to paired Devices in M2 flows instead).
   Not blocking WP-08.
 - Status: OPEN
+
+## QUESTION-101 — Ports layer representation in the §10.1 dependency rule
+- Date: 2026-10-04
+- Raised by: WP-01 (import-linter contracts, `agent/.importlinter`)
+- Question: §10.1 states both "api → core → ports" and "core imports nothing from
+  api/adapters/store **implementations**", while the layout places the protocols in
+  `adapters/ports.py`. Reading "implementations" as excluding the `ports` module
+  (i.e. core MAY import `adapters.ports`, but no other `adapters.*`), is that the
+  intended mapping — or should a dedicated `ports/` package exist at `M1`?
+- Context/evidence: LM-ARCH-001 §10.1 ("Dependency rule (enforced by an
+  import-linter test)") and §10.2 ("Ports (interfaces the core depends on)");
+  contracts currently enforced: layers `api > core > adapters.ports`; forbidden:
+  core → {api, store, adapters.backends/.hardware/.discovery/.tailscale/.keyring_store,
+  fastapi, httpx, sqlite3, psutil}.
+- Why we must not guess: getting this wrong shapes every `core`/`adapters` import
+  from WP-05 onwards; unwinding later is expensive.
+- Default if unanswered: keep the implemented interpretation (conservative; satisfies
+  both statements textually). Not blocking M0 exit; revisit before WP-05.
+- Status: OPEN
+

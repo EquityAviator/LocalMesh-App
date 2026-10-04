@@ -26,9 +26,18 @@ def test_cli_main_runs() -> None:
     assert main([]) == 0
 
 
-def test_cli_milestone_subcommands_report() -> None:
-    """`pair`/`devices`/`revoke`/`doctor` report their milestone (§22.1)."""
+def test_cli_doctor_reports_milestone() -> None:
+    """`doctor` reports its milestone (WP-13/M3 per §22.1)."""
     from localmesh_agent.cli import main
 
     assert main(["doctor"]) == 0
-    assert main(["pair"]) == 0
+
+
+def test_cli_pair_without_agent_fails_actionable(capsys: object) -> None:
+    """WP-08: `pair` is an admin client (§15.4); without a running Agent it
+    fails with an actionable error (admin listener unreachable), exit 1."""
+    from localmesh_agent.cli import AdminUnreachable, main
+
+    code = main(["pair"])
+    assert code == 1
+    assert AdminUnreachable is not None  # exported for callers/tests

@@ -11,7 +11,8 @@
         "tags": [
           "info"
         ],
-        "summary": "Agent information (API-INFO-01)",
+        "summary": "Get Info",
+        "description": "Serve API-INFO-01 (\u00a713.2) \u2014 the pre-auth discovery/probe endpoint.",
         "operationId": "get_info_mesh_v1_info_get",
         "responses": {
           "200": {
@@ -20,6 +21,205 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/pair/complete": {
+      "post": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "Pair Complete",
+        "description": "API-PAIR-01 (\u00a713.2): claim the open session with an HMAC proof \u2192 202.",
+        "operationId": "pair_complete_mesh_v1_pair_complete_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Pair Complete Mesh V1 Pair Complete Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/pair/status": {
+      "post": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "Pair Status",
+        "description": "API-PAIR-02 (\u00a713.2): authenticated status poll (device_id/endpoints\nonly when approved).",
+        "operationId": "pair_status_mesh_v1_pair_status_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Pair Status Mesh V1 Pair Status Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/auth/challenge": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Auth Challenge",
+        "description": "API-AUTH-01 (\u00a713.2): issue a single-use signing challenge.",
+        "operationId": "auth_challenge_mesh_v1_auth_challenge_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Auth Challenge Mesh V1 Auth Challenge Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/auth/token": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Auth Token",
+        "description": "API-AUTH-02 (\u00a713.2): verify the ECDSA signature; issue a Device Token.",
+        "operationId": "auth_token_mesh_v1_auth_token_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Auth Token Mesh V1 Auth Token Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/models": {
+      "get": {
+        "summary": "List Models",
+        "operationId": "list_models_mesh_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Models Mesh V1 Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_mesh_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Mesh V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/chat/completions": {
+      "post": {
+        "summary": "Chat Completions",
+        "operationId": "chat_completions_mesh_v1_chat_completions_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Chat Completions Mesh V1 Chat Completions Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mesh/v1/requests/{request_id}": {
+      "delete": {
+        "summary": "Cancel Request",
+        "operationId": "cancel_request_mesh_v1_requests__request_id__delete",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Cancel Request Mesh V1 Requests  Request Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -85,6 +285,59 @@
         ],
         "title": "AgentInfo",
         "description": "Body of `GET /mesh/v1/info` (API-INFO-01, \u00a713.2).\n\nNo OS, no model info, no IPs (limits pre-auth disclosure)."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       }
     }
   }

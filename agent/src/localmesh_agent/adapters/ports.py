@@ -269,13 +269,47 @@ class TailnetProbe(Protocol):
 @runtime_checkable
 class Store(Protocol):
     """§10.2 sketch ("devices, token_hashes, audit, settings, model_cache"),
-    refined with the methods `core` consumes today — §16.3 "store snapshot in
-    model_cache". The concrete surface is `store/sqlite.py` (WP-04); the full
-    typed repository-port split lands with WP-08 without breaking this port.
+    refined with the methods `core` and `security` consume today. WP-08 note
+    (§10.1 dependency rule): "`security/` may use `store` through a repository
+    port" — the security services below type against THIS port, never against
+    `store/sqlite.py`; the concrete surface remains `store/sqlite.py` (WP-04,
+    §14.1 schema verbatim).
     """
 
+    # -- model cache (§16.3, consumed by core.registry) -----------------------
     def replace_model_cache(self, entries: list[tuple[str, str]], refreshed_at: int) -> None: ...
     def get_model_cache(self) -> dict[str, dict[str, Any]]: ...
+
+    # -- devices (§14.1, consumed by security.devices / pairing) ---------------
+    def upsert_device(
+        self,
+        device_id: str,
+        name: str,
+        platform: str,
+        public_key_spki: bytes,
+        scopes: str,
+        created_at: int,
+    ) -> None: ...
+    def get_device(self, device_id: str) -> dict[str, Any] | None: ...
+    def list_devices(self) -> list[dict[str, Any]]: ...
+    def revoke_device(self, device_id: str, revoked_at: int) -> bool: ...
+    def touch_device_last_seen(self, device_id: str, ts: int) -> None: ...
+
+    # -- tokens (§14.1: SHA-256 hash only; consumed by security.tokens) --------
+    def put_token(
+        self, token_hash: bytes, device_id: str, issued_at: int, expires_at: int
+    ) -> None: ...
+    def get_token(self, token_hash: bytes) -> dict[str, Any] | None: ...
+    def delete_device_tokens(self, device_id: str) -> int: ...
+
+    # -- audit (§14.1/§20.2: Metadata only, closed vocabulary) -----------------
+    def append_audit(
+        self,
+        event: str,
+        device_id: str | None = None,
+        meta: dict[str, Any] | None = None,
+        ts: int | None = None,
+    ) -> None: ...
 
 
 @runtime_checkable

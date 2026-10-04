@@ -146,6 +146,36 @@ async def _stream(
                 cancelled = True
                 break
             if job.token.cancelled:
+                # Revoke-during-stream (§15.6 / FR-PAIR-06): the scheduler set
+                # cancel_reason="device_revoked" — tell the phone best-effort,
+                # then close. Uniform non-revoke cancels stay silent.
+                if job.cancel_reason == "device_revoked":
+                    release_job()
+                    store.append_audit(
+                        "chat_finished",
+                        meta={
+                            "backend_id": backend.id,
+                            "mesh_model_id": mesh_model_id,
+                            "status": "failed",
+                        },
+                    )
+                    yield _sse_event(
+                        "mesh.error",
+                        json.dumps(
+                            {
+                                "error": {
+                                    "code": "DEVICE_REVOKED",
+                                    "message": "This device has been revoked.",
+                                    "retryable": False,
+                                    "request_id": request_id,
+                                    "details": {},
+                                }
+                            },
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                        ),
+                    )
+                    return
                 cancelled = True
                 break
             try:
@@ -158,6 +188,37 @@ async def _stream(
                 break
             except MeshError as error:
                 if error.code == "CANCELLED":
+                    # §15.6 / FR-PAIR-06: revoke-during-stream must surface
+                    # DEVICE_REVOKED (best effort) whether the loop noticed the
+                    # cancel between chunks (above) or the upstream abort
+                    # surfaced here.
+                    if job.cancel_reason == "device_revoked":
+                        release_job()
+                        store.append_audit(
+                            "chat_finished",
+                            meta={
+                                "backend_id": backend.id,
+                                "mesh_model_id": mesh_model_id,
+                                "status": "failed",
+                            },
+                        )
+                        yield _sse_event(
+                            "mesh.error",
+                            json.dumps(
+                                {
+                                    "error": {
+                                        "code": "DEVICE_REVOKED",
+                                        "message": "This device has been revoked.",
+                                        "retryable": False,
+                                        "request_id": request_id,
+                                        "details": {},
+                                    }
+                                },
+                                separators=(",", ":"),
+                                ensure_ascii=False,
+                            ),
+                        )
+                        return
                     cancelled = True
                     break
                 release_job()
