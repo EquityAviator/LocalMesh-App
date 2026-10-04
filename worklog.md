@@ -487,3 +487,35 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：修复 3 �
 4. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale，硬门）、真实 LAN/GPU/Android 环境验证、WP-16+ 等 owner 重规划（§22.2）。
 5. 冷加载长流（120 s 预算 + 15 s ping）的**真实 LM Studio/Ollama 行为**待 fixtures/实机验证——fake 的冷加载是 sleep-before-headers，真实后端可能先发头再静默（两条超时路径已分别覆盖：send 阶段 httpx read 预算 + _consume 首解析 chunk 缺口）。
 6. 沙箱注：HEAD 会间会被切回 main，本轮提交直接落 main；`agent/.venv` 未变（无新依赖）。
+
+---
+Task ID: 19 — webDevReview round 10 (Admin API conformance pass §13.1 + §20.1 metrics + 2 dashboard QA fixes)
+Agent: Z.ai Code (main agent)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 全绿无 bug → §13.1 Admin API 一致性 + §20.1 可观测性）。
+
+项目状态判断:
+- QA 基线全绿：Python gate（unit 233 / integration+security 79 / contract 3 announced skips、ruff/format clean、mypy --strict CI scope clean、CI 式 pytest_layer 全绿）；agent-browser 桌面 1280 + 移动 390（无溢出）、console 零错误、过滤 chips（planned=3）/行展开/Refresh 实测通过、/api/localmesh/status 200。→ 按上轮候选推进：本轮主题 = Admin API 一致性 + §20.1 指标。
+
+本轮完成 (agent commit e4bf129 + dashboard commit e4bf129，均落 main):
+1. **§13.1 Admin API 一致性 pass（重大发现）**：QUESTION-103 item 4 原读法"§15.4/§15.6 只命名动作不命名路径"再次漏证据——§13.1 正文（line 893）明确枚举全部 admin 路由（与 WP-13 X-Admin-Token 同类失误）。规格优先对齐：
+   - **PATCH /admin/devices/{id}**（scopes, name）— 规格命名的 operator 授权机制（"models:manage and tasks are granted per Device by the operator"）。DeviceService.update()：scope 宇宙白名单（§17.7 矩阵：models:read/chat/models:manage/tasks）、canonical 排序去重、name strip+128 上限 [DESIGN]、吊销行可编辑但鉴权仍封锁 [DESIGN]（token 已删 + revoked_at 门，无法复活）；Store.update_device 新增（ports + sqlite 动态 SET（固定列字面量，绑定参数）+ fake_store）。
+   - **GET /admin/status** — 规格命名、形状 [DESIGN]：Metadata-only（identity/uptime/pairing state/device 计数/backends/queue/listen/pin 前 12 字符/tailnet block），经 status_fn 注入（admin 层零 core 依赖）。
+   - **DELETE /admin/devices/{id}** + **POST /admin/pairing/open|approve|deny|close** + **GET /admin/pairing** — 规格命名路由升为主路由；WP-08 [DESIGN] 名保留为 loopback-only 别名（owner 可一行 diff 移除）。QUESTION-103 item 4 → **RESOLVED by implementation**。
+   - 审计：AUDIT_EVENTS 扩展 device_updated（§14.1 schema 注释以"…"收尾 = 开放词表钩子 [DESIGN]；meta 不含变更字段名——§17.10 allow-list 无该键，扩 allow-list 留 owner）。
+2. **§20.1 指标（observability/metrics.py 替换 M0 stub）**：MetricsRegistry 十个 verbatim family（requests_total{status,backend} / ttft_ms histogram / tokens_out_total / tokens_per_sec / queue_depth / active_generations / backend_up{backend} / auth_failures_total / pairing_attempts_total / cancel_latency_ms）；线程安全 push + scrape 时 pull 刷新（scheduler.queue_stats + registry.snapshot）；Prometheus text 0.0.4 渲染（label 转义、直方图 bucket/_sum/_count、无标签空 family 预置 0）。**GET /admin/metrics** [DESIGN path]——§20.1 "optional Prometheus text endpoint on loopback admin only"，ADR-014 守卫全覆盖。
+   - 埋点：deps.get_principal 401 类 → auth_failures_total（NoReturn helper）；pair.py claim → pairing_attempts_total；chat.py 流式 + **非流式**（smoke 实测抓到非流式漏埋）→ requests_total(ok|error|cancelled)/tokens_out_total/ttft_ms/tokens_per_sec；scheduler cancel()/cancel_by_device() 打戳 → _finish 观测 cancel_latency_ms（cancel 请求→job 完成，§13.7 ≤1s 带宽可解析；构造器注入，core 零直接依赖）。
+3. **测试 +45**：unit +31（metrics 16：counter/gauge/histogram 语义、bucket 常量钉 §19.1 200ms + §13.7 1s、渲染转义/空 family/全 10 family、pull 刷新 + 降级；device update 13；scheduler cancel-latency 2 含"流退出路径不重复计数"）+ integration 12（admin conformance：**授权 e2e**——operator PATCH 授 models:manage → 同设备新 token 过 scope 门打到 /models/load 404 而非 403；PATCH 校验矩阵（unknown scope/empty/blank name/unknown field/garbage JSON→422）；DELETE=规格化 revoke + 别名行为一致；pairing 规格路由↔别名 parity；status Metadata-only 断言（全 pin/ admin token 不出现在 body）；metrics 10 family + 真实事件计数 + Host/token 负路径）。
+4. **QA 修复**：agent/tests/security/README.md 陈旧 Pending 行移除 TC-SEC-05（round 9 已交付）；真实进程 smoke（dev-insecure + fake LM Studio + admin token）全链路验证：pairing open(规格路由) → claim → approve(别名) → PATCH 授权 → chat 流式+非流式 → scrape 显示 requests_total=2/tokens_out_total=6/ttft 直方图/backend_up=1 → DELETE → 再 DELETE 404。
+5. **仪表盘 round 10**：新面板 "Admin API surface (§13.1 loopback · ADR-014)"——operator 条（loopback listener + X-Admin-Token(§13.1·T-11) + operator-only 徽章）、12 端点行（PATCH 紫/POST 琥珀/DELETE 红/GET 翠方法 chip、spec-named vs [DESIGN] path 徽章、行展开 responses chips）、§20.1 metrics families 网格（10 卡片：counter/histogram/gauge 类型 chip + push/pull 来源注记、可折叠）、WP-08 别名→规格名映射卡（QUESTION-103 item 4 resolved）、§17.6 auth 注脚；status JSON：Round 10、+2 gate 行（27 总）、QUESTION-103 注记、nextSteps 重写。
+   - **agent-browser QA 抓到 2 个真 bug 并修复**：(1) PATCH/DELETE 共享路径 `/admin/devices/{id}` → React duplicate key error（rowKey 改 method+path）；(2) metrics 切换行 390px 溢出 5px（sw=395，flex 无 wrap）→ flex-wrap 后 390=390。
+
+验证结果:
+- main = e4bf129（agent + dashboard）。gate 全绿：ruff check/format PASS（97 files）、mypy --strict PASS（CI scope 15 files）、pytest **356 passed + 3 announced skips**（265 unit / 77 integration / 14 security）、import-linter 3/3 KEPT、OpenAPI drift OK（12 paths）、fake backends 31/31、bun lint clean、agent-browser 桌面 1280 + 移动 390（sw=390 无溢出）、console 零错误、行展开 + metrics 网格交互实测通过、截图存档 download/round10-admin-panel-{desktop,mobile}.png。
+
+未解决问题/风险，下一阶段建议:
+1. **沙箱侧增量已尽**：Agent 侧 M2–M5 + admin API 全量 + §20.1 指标完成。剩余 WP（09/10/11-App/12/13-App）全部依赖 Android/Gradle 环境；WP-16+ 按 §22.2 等 owner 重规划（M6 Control Plane 门在 Q-05）。
+2. QUESTION-103 item 4 已 RESOLVED（若 owner 反对别名保留 = 一行 diff）；剩余 OPEN：QUESTION-101/102/104/105/106 + ADR-017/018 审批。
+3. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale 三类，contract tests 硬门）、真实 LAN/GPU/Android 验证、/admin/metrics 在真实 Prometheus 抓取器下的 scrape 行为 [Not verified]（格式按 text/plain 0.0.4 渲染并有单测）。
+4. 全 src mypy --strict 范围决策（26 处 CI 范围外）仍待 owner call，未动。
+5. device_updated 审计扩展（AUDIT_EVENTS + device_updated）与 §17.10 "fields" 键扩展均为 [DESIGN] 标注——若 owner 收紧词表，移除是一处小 diff。
+6. 沙箱注：HEAD 会间会被切回 main，本轮提交直接落 main。
