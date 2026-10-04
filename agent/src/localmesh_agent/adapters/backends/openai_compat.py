@@ -457,3 +457,42 @@ class OpenAICompatBackend:
 
     async def keep_warm(self, backend_model_id: str) -> None:
         raise MeshError("UNSUPPORTED_CAPABILITY", "This Backend cannot keep models warm.")
+
+    # -- M7 embeddings (FR-MM-03; §6: OpenAI-compatible /v1/embeddings on
+    #    LM Studio and Ollama alike) -------------------------------------------
+
+    async def embed(self, texts: tuple[str, ...], backend_model_id: str) -> list[list[float]]:
+        """`POST /v1/embeddings` (OpenAI shape). Defensive parse (§10.3 rule 2):
+        a malformed answer is a protocol error, raw bodies never surfaced."""
+        body = {"model": backend_model_id, "input": list(texts)}
+        try:
+            response = await self._client.post(
+                self._url("/v1/embeddings"), json=body, headers=self._headers()
+            )
+        except httpx.HTTPError as exc:
+            raise MeshError("BACKEND_UNAVAILABLE", "Embeddings transport failed.") from exc
+        if response.status_code != 200:
+            raise MeshError("BACKEND_UNAVAILABLE", "Embeddings request rejected by Backend.")
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            warn_schema_drift(self.id, "/v1/embeddings")
+            raise MeshError("BACKEND_PROTOCOL", "Embeddings answer was malformed.") from exc
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list) or len(data) != len(texts):
+            warn_schema_drift(self.id, "/v1/embeddings")
+            raise MeshError("BACKEND_PROTOCOL", "Embeddings answer was malformed.")
+        vectors: list[list[float]] = []
+        for item in data:
+            embedding = item.get("embedding") if isinstance(item, dict) else None
+            if (
+                not isinstance(embedding, list)
+                or not embedding
+                or not all(
+                    isinstance(v, (int, float)) and not isinstance(v, bool) for v in embedding
+                )
+            ):
+                warn_schema_drift(self.id, "/v1/embeddings")
+                raise MeshError("BACKEND_PROTOCOL", "Embeddings answer was malformed.")
+            vectors.append([float(v) for v in embedding])
+        return vectors

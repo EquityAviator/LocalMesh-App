@@ -76,11 +76,17 @@ def test_openai_model_list(make_lmstudio: Any) -> None:
 def test_model_list_shape_variants(make_lmstudio: Any) -> None:
     server = make_lmstudio(cold_load_ms=0)
     url = f"{base_url(server)}/api/v1/models"
-    variant_b = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-b"}).json()["data"]
+    variant_b = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-b"}).json()[
+        "data"
+    ]
     assert "context_length" in variant_b[0]
-    variant_c = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-c"}).json()["data"]
+    variant_c = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-c"}).json()[
+        "data"
+    ]
     assert "max_context_len" in variant_c[0] and "extra_unknown_field" in variant_c[0]
-    variant_a = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-a"}).json()["data"]
+    variant_a = httpx.get(url, headers={SCENARIO_HEADER: "shape-variant-a"}).json()[
+        "data"
+    ]
     assert list(variant_a[0].keys()) == ["id"]
 
 
@@ -93,15 +99,17 @@ def collect_sse(resp: httpx.Response) -> list[str]:
 
 def test_streaming_sse_ends_with_done(make_lmstudio: Any) -> None:
     server = make_lmstudio(cold_load_ms=0)
-    with httpx.Client() as client:
-        with client.stream(
+    with (
+        httpx.Client() as client,
+        client.stream(
             "POST",
             f"{base_url(server)}/v1/chat/completions",
             json={"model": DEFAULT_MODEL, "stream": True, "messages": []},
-        ) as resp:
-            assert resp.status_code == 200
-            assert resp.headers["content-type"].startswith(SSE_HEADER)
-            data_lines = collect_sse(resp)
+        ) as resp,
+    ):
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith(SSE_HEADER)
+        data_lines = collect_sse(resp)
     assert data_lines[-1] == "data: [DONE]"
     first_chunk = json.loads(data_lines[0].removeprefix("data: "))
     assert first_chunk[MARKER_KEY]["shape"] == UNVERIFIED
@@ -111,14 +119,16 @@ def test_streaming_sse_ends_with_done(make_lmstudio: Any) -> None:
 
 def test_mid_stream_disconnect_has_no_done(make_lmstudio: Any) -> None:
     server = make_lmstudio(cold_load_ms=0)
-    with httpx.Client() as client:
-        with client.stream(
+    with (
+        httpx.Client() as client,
+        client.stream(
             "POST",
             f"{base_url(server)}/v1/chat/completions",
             json={"model": DEFAULT_MODEL, "stream": True, "messages": []},
             headers={SCENARIO_HEADER: "mid-stream-disconnect"},
-        ) as resp:
-            data_lines = collect_sse(resp)
+        ) as resp,
+    ):
+        data_lines = collect_sse(resp)
     assert len(data_lines) >= 1
     assert all(line != "data: [DONE]" for line in data_lines)
 
@@ -137,14 +147,16 @@ def test_http_500_scenario(make_lmstudio: Any) -> None:
 def test_slow_first_token_scenario(make_lmstudio: Any) -> None:
     server = make_lmstudio(cold_load_ms=0)
     started = time.monotonic()
-    with httpx.Client() as client:
-        with client.stream(
+    with (
+        httpx.Client() as client,
+        client.stream(
             "POST",
             f"{base_url(server)}/v1/chat/completions",
             json={"model": DEFAULT_MODEL, "stream": True, "messages": []},
             headers={SCENARIO_HEADER: "slow-first-token", DELAY_HEADER: "400"},
-        ) as resp:
-            collect_sse(resp)
+        ) as resp,
+    ):
+        collect_sse(resp)
     assert time.monotonic() - started >= 0.35
 
 
@@ -153,13 +165,15 @@ def test_cold_load_then_warm(make_lmstudio: Any) -> None:
 
     def stream_once() -> float:
         started = time.monotonic()
-        with httpx.Client() as client:
-            with client.stream(
+        with (
+            httpx.Client() as client,
+            client.stream(
                 "POST",
                 f"{base_url(server)}/v1/chat/completions",
                 json={"model": DEFAULT_MODEL, "stream": True, "messages": []},
-            ) as resp:
-                collect_sse(resp)
+            ) as resp,
+        ):
+            collect_sse(resp)
         return time.monotonic() - started
 
     cold = stream_once()
@@ -217,3 +231,20 @@ def test_recorded_fixture_is_served_verbatim(make_lmstudio: Any, tmp_path: Any) 
     body = resp.json()
     assert body["data"] == [{"id": "recorded-from-real-backend"}]
     assert body[MARKER_KEY]["shape"] == RECORDED
+
+
+# -- M7: /v1/embeddings (FR-MM-03; §6.1 documents the OpenAI surface) ----------
+
+
+def test_embeddings_deterministic(make_lmstudio: Any) -> None:
+    server = make_lmstudio()
+    url = f"{base_url(server)}/v1/embeddings"
+    body = {"model": DEFAULT_MODEL, "input": ["alpha", "beta"]}
+    first = httpx.post(url, json=body)
+    assert first.status_code == 200
+    payload = first.json()
+    assert payload[MARKER_KEY]["shape"] == UNVERIFIED
+    assert [d["index"] for d in payload["data"]] == [0, 1]
+    again = httpx.post(url, json=body).json()
+    assert again["data"][0]["embedding"] == payload["data"][0]["embedding"]
+    assert payload["data"][0]["embedding"] != payload["data"][1]["embedding"]

@@ -16,6 +16,7 @@ from localmesh_agent.store.sqlite import (
     AUDIT_MAX_ROWS,
     AUDIT_RETENTION_SECONDS,
     EXPECTED_TABLES,
+    EXPECTED_TABLES_M7,
     Store,
     StoreError,
 )
@@ -30,8 +31,10 @@ def test_migration_applies_schema_verbatim(store: Store) -> None:
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
     }
-    assert tables == set(EXPECTED_TABLES)
-    for table, expected_columns in EXPECTED_TABLES.items():
+    # M7 (§13.9): migration 0002 adds the task/RAG tables alongside §14.1.
+    assert set(EXPECTED_TABLES) <= tables
+    assert tables <= set(EXPECTED_TABLES) | set(EXPECTED_TABLES_M7)
+    for table, expected_columns in {**EXPECTED_TABLES, **EXPECTED_TABLES_M7}.items():
         columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         assert columns == expected_columns, f"{table} columns diverge from §14.1"
 

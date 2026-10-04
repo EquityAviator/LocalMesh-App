@@ -54,6 +54,39 @@ VALID_SCENARIOS = (
 )
 
 
+def deterministic_embedding(text: str, dim: int = 16) -> list[float]:
+    """Deterministic pseudo-embedding from the text hash (test asset only).
+
+    NOT a semantic embedding: stable per input string so retrieval tests can
+    construct similarity by reusing substrings/identical text. Shape follows
+    the OpenAI `/v1/embeddings` contract; values are UNVERIFIED_SHAPE by the
+    fake marker rule.
+    """
+    import hashlib as _hashlib
+
+    digest = _hashlib.sha256(text.encode("utf-8")).digest()
+    return [round((digest[i % len(digest)] / 255.0) * 2 - 1, 6) for i in range(dim)]
+
+
+def embeddings_response(model: str, inputs: list[str]) -> dict[str, Any]:
+    """OpenAI-shaped /v1/embeddings body (marked UNVERIFIED_SHAPE)."""
+    return marked(
+        {
+            "object": "list",
+            "model": model,
+            "data": [
+                {
+                    "object": "embedding",
+                    "index": i,
+                    "embedding": deterministic_embedding(text),
+                }
+                for i, text in enumerate(inputs)
+            ],
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        }
+    )
+
+
 def marker(shape: str = UNVERIFIED, note: str | None = None) -> dict[str, Any]:
     """Build the `_localmesh_fake` marker object embedded in JSON bodies."""
     return {
@@ -65,7 +98,9 @@ def marker(shape: str = UNVERIFIED, note: str | None = None) -> dict[str, Any]:
     }
 
 
-def marked(obj: dict[str, Any], shape: str = UNVERIFIED, note: str | None = None) -> dict[str, Any]:
+def marked(
+    obj: dict[str, Any], shape: str = UNVERIFIED, note: str | None = None
+) -> dict[str, Any]:
     """Return a copy of `obj` with the shape marker added on top."""
     out = dict(obj)
     out.update(marker(shape, note))
@@ -134,7 +169,7 @@ class FakeHandler(BaseHTTPRequestHandler):
 
     # -- plumbing ---------------------------------------------------------
 
-    def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003 (stdlib signature)
+    def log_message(self, fmt: str, *args: Any) -> None:
         """Silence per-request logs: never echo bodies/Content into logs (SEC-N3 spirit)."""
         return
 
@@ -203,7 +238,12 @@ class FakeHandler(BaseHTTPRequestHandler):
             return False
         self.send_json(
             marked(
-                {"error": {"message": "synthetic internal server error", "type": "server_error"}}
+                {
+                    "error": {
+                        "message": "synthetic internal server error",
+                        "type": "server_error",
+                    }
+                }
             ),
             status=500,
         )
@@ -253,7 +293,9 @@ class FakeHandler(BaseHTTPRequestHandler):
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": model,
-                    "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}],
+                    "choices": [
+                        {"index": 0, "delta": {"content": piece}, "finish_reason": None}
+                    ],
                 }
                 if i == 0:
                     chunk = marked(chunk)
@@ -291,6 +333,10 @@ class FakeHandler(BaseHTTPRequestHandler):
                         "finish_reason": "stop",
                     }
                 ],
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                },
             }
         )

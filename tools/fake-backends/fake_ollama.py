@@ -32,6 +32,7 @@ from fake_core import (
     UNVERIFIED,
     FakeBackendServer,
     FakeHandler,
+    embeddings_response,
     marked,
 )
 
@@ -60,7 +61,12 @@ class FakeOllamaHandler(FakeHandler):
             ]
         if variant == "c":
             return [
-                {"name": m, "model": m, "modified_at": "2026-01-01T00:00:00Z", "extra": [1, 2]}
+                {
+                    "name": m,
+                    "model": m,
+                    "modified_at": "2026-01-01T00:00:00Z",
+                    "extra": [1, 2],
+                }
                 for m in DEFAULT_ON_DISK
             ]
         return [{"name": m} for m in DEFAULT_ON_DISK]
@@ -71,7 +77,9 @@ class FakeOllamaHandler(FakeHandler):
         # adapter tests can observe a keep_warm() call flipping list state.
         in_memory = sorted(self.server.in_memory)
         if variant == "c":
-            return [{"name": m, "model": m, "vram_bytes": 5000000000} for m in in_memory]
+            return [
+                {"name": m, "model": m, "vram_bytes": 5000000000} for m in in_memory
+            ]
         return [
             {
                 "name": m,
@@ -97,7 +105,10 @@ class FakeOllamaHandler(FakeHandler):
                 "parameter_size": "7B",
                 "quantization_level": "Q4_K_M",
             },
-            "model_info": {"general.architecture": "qwen2", "general.parameter_count": 7615622400},
+            "model_info": {
+                "general.architecture": "qwen2",
+                "general.parameter_count": 7615622400,
+            },
         }
 
     # -- routes ------------------------------------------------------------
@@ -110,7 +121,9 @@ class FakeOllamaHandler(FakeHandler):
             self.send_json(
                 self.fixture_response(
                     "api-tags.json",
-                    lambda: marked({"models": self.tags_models(scenario.shape_variant)}),
+                    lambda: marked(
+                        {"models": self.tags_models(scenario.shape_variant)}
+                    ),
                 )
             )
             return
@@ -136,6 +149,20 @@ class FakeOllamaHandler(FakeHandler):
         if path == "/v1/chat/completions":
             self.chat_completions(body)
             return
+        if path == "/v1/embeddings":
+            # M7 (FR-MM-03): OpenAI-compatible embeddings (§6.2 documents
+            # /v1/embeddings for Ollama); deterministic fake vectors.
+            if self.maybe_fail():
+                return
+            inputs = body.get("input")
+            if not isinstance(inputs, list):
+                inputs = [str(inputs or "")]
+            self.send_json(
+                embeddings_response(
+                    str(body.get("model") or DEFAULT_MODEL), [str(t) for t in inputs]
+                )
+            )
+            return
         if path == "/api/chat":
             self.native_chat(body)
             return
@@ -150,7 +177,9 @@ class FakeOllamaHandler(FakeHandler):
         # it, matching the safe assumption; CAPTURE.md probe will settle it).
         self.server.in_memory.add(model)
         if body.get("stream"):
-            self.stream_chat(model, pieces=["Hello", " from", " fake", " Ollama", "."], gap_ms=10)
+            self.stream_chat(
+                model, pieces=["Hello", " from", " fake", " Ollama", "."], gap_ms=10
+            )
             return
         self.send_json(self.non_stream_completion(model, "Hello from fake Ollama."))
 
@@ -201,10 +230,10 @@ class FakeOllamaHandler(FakeHandler):
 
     # -- HTTP dispatch -------------------------------------------------------
 
-    def do_GET(self) -> None:  # noqa: N802 (stdlib naming)
+    def do_GET(self) -> None:
         self.route_get(self.path.split("?", 1)[0])
 
-    def do_POST(self) -> None:  # noqa: N802 (stdlib naming)
+    def do_POST(self) -> None:
         self.route_post(self.path.split("?", 1)[0])
 
 
@@ -217,8 +246,12 @@ class FakeOllama(FakeBackendServer):
     model for test assertions only (test-tool surface, no contract).
     """
 
-    def __init__(self, address: tuple[str, int], fixtures_dir: Path | None = None) -> None:
-        super().__init__(address, FakeOllamaHandler, auth_token=None, fixtures_dir=fixtures_dir)
+    def __init__(
+        self, address: tuple[str, int], fixtures_dir: Path | None = None
+    ) -> None:
+        super().__init__(
+            address, FakeOllamaHandler, auth_token=None, fixtures_dir=fixtures_dir
+        )
         self.in_memory: set[str] = set(DEFAULT_IN_MEMORY)
         self.warm_pings: dict[str, int] = {}
 
@@ -230,13 +263,17 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=11434)
     parser.add_argument("--host", default="127.0.0.1")  # loopback only (SEC-N2 spirit)
     parser.add_argument(
-        "--fixtures-dir", default=None, help="dir with recorded fixtures (see docs/fixtures)"
+        "--fixtures-dir",
+        default=None,
+        help="dir with recorded fixtures (see docs/fixtures)",
     )
     args = parser.parse_args()
 
     fixtures = Path(args.fixtures_dir) if args.fixtures_dir else None
     server = FakeOllama((args.host, args.port), fixtures_dir=fixtures)
-    print(f"fake Ollama on http://{args.host}:{args.port} [no-auth per §6.2] shape={UNVERIFIED}")
+    print(
+        f"fake Ollama on http://{args.host}:{args.port} [no-auth per §6.2] shape={UNVERIFIED}"
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

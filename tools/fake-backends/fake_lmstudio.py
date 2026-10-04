@@ -32,6 +32,7 @@ from fake_core import (
     UNVERIFIED,
     FakeBackendServer,
     FakeHandler,
+    embeddings_response,
     marked,
 )
 
@@ -85,16 +86,27 @@ class FakeLMStudioHandler(FakeHandler):
     def openai_models_items(self, variant: str) -> list[dict[str, Any]]:
         if variant == "b":
             return [
-                {"id": m["id"], "object": "model", "owned_by": "localmesh-fake", "created": 0}
+                {
+                    "id": m["id"],
+                    "object": "model",
+                    "owned_by": "localmesh-fake",
+                    "created": 0,
+                }
                 for m in DEFAULT_MODELS
             ]
         if variant == "c":
             return [
-                {"id": m["id"], "object": "model", "owned_by": m["owned_by"], "unknown_extra": 1}
+                {
+                    "id": m["id"],
+                    "object": "model",
+                    "owned_by": m["owned_by"],
+                    "unknown_extra": 1,
+                }
                 for m in DEFAULT_MODELS
             ]
         return [
-            {"id": m["id"], "object": "model", "owned_by": m["owned_by"]} for m in DEFAULT_MODELS
+            {"id": m["id"], "object": "model", "owned_by": m["owned_by"]}
+            for m in DEFAULT_MODELS
         ]
 
     # -- routes ------------------------------------------------------------
@@ -142,6 +154,20 @@ class FakeLMStudioHandler(FakeHandler):
         if path == "/v1/chat/completions":
             self.chat_completions(body)
             return
+        if path == "/v1/embeddings":
+            # M7 (FR-MM-03): OpenAI-compatible embeddings (§6.1 documents
+            # /v1/embeddings for LM Studio); deterministic fake vectors.
+            if self.maybe_fail():
+                return
+            inputs = body.get("input")
+            if not isinstance(inputs, list):
+                inputs = [str(inputs or "")]
+            self.send_json(
+                embeddings_response(
+                    str(body.get("model") or DEFAULT_MODEL), [str(t) for t in inputs]
+                )
+            )
+            return
         self.send_json(marked({"error": {"message": f"not found: {path}"}}), status=404)
 
     def chat_completions(self, body: dict[str, Any]) -> None:
@@ -167,13 +193,13 @@ class FakeLMStudioHandler(FakeHandler):
 
     # -- HTTP dispatch -------------------------------------------------------
 
-    def do_GET(self) -> None:  # noqa: N802 (stdlib naming)
+    def do_GET(self) -> None:
         if not self.authorized():
             self.send_unauthorized()
             return
         self.route_get(self.path.split("?", 1)[0])
 
-    def do_POST(self) -> None:  # noqa: N802 (stdlib naming)
+    def do_POST(self) -> None:
         if not self.authorized():
             self.send_unauthorized()
             return
@@ -189,7 +215,10 @@ class FakeLMStudio(FakeBackendServer):
         cold_load_ms: int = 1500,
     ) -> None:
         super().__init__(
-            address, FakeLMStudioHandler, auth_token=auth_token, fixtures_dir=fixtures_dir
+            address,
+            FakeLMStudioHandler,
+            auth_token=auth_token,
+            fixtures_dir=fixtures_dir,
         )
         self.cold_load_ms = cold_load_ms
         self.loaded_models: set[str] = set()
@@ -203,7 +232,9 @@ def main() -> int:
     parser.add_argument("--token", default="", help="bearer token for --auth token")
     parser.add_argument("--cold-load-ms", type=int, default=1500)
     parser.add_argument(
-        "--fixtures-dir", default=None, help="dir with recorded fixtures (see docs/fixtures)"
+        "--fixtures-dir",
+        default=None,
+        help="dir with recorded fixtures (see docs/fixtures)",
     )
     args = parser.parse_args()
 
@@ -220,8 +251,14 @@ def main() -> int:
         fixtures_dir=fixtures,
         cold_load_ms=args.cold_load_ms,
     )
-    mode = f"token-auth ({'set' if token else 'MISSING'})" if args.auth == "token" else "no-auth"
-    print(f"fake LM Studio on http://{args.host}:{args.port} [{mode}] shape={UNVERIFIED}")
+    mode = (
+        f"token-auth ({'set' if token else 'MISSING'})"
+        if args.auth == "token"
+        else "no-auth"
+    )
+    print(
+        f"fake LM Studio on http://{args.host}:{args.port} [{mode}] shape={UNVERIFIED}"
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

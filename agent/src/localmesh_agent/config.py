@@ -29,8 +29,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 CONFIG_ENV_VAR = "LOCALMESH_CONFIG"
 
-# §10.3 — the only Backend kinds v1 knows.
-BACKEND_KINDS: tuple[str, ...] = ("lmstudio", "ollama", "openai_compat")
+# §10.3 — the only Backend kinds v1 knows. M7 (FR-MM-02) adds the
+# Whisper-class STT service as a dedicated `whisper` kind [DESIGN per
+# FR-MM-02/S-13: "a separate Whisper-service adapter"].
+BACKEND_KINDS: tuple[str, ...] = ("lmstudio", "ollama", "openai_compat", "whisper")
+
+# §13.9 — the only Task types v1 knows (shape fixed at M0 stub, delivered M7).
+TASK_TYPES: tuple[str, ...] = ("chat", "vision", "transcribe", "doc_qa")
 
 # §13.5 — closed capability vocabulary; a value appears only if the Backend
 # reports it or a user override sets it. No heuristic inference (§13.5).
@@ -158,6 +163,23 @@ class LoggingConfig(_StrictModel):
     level: str = "info"  # allow-list formatter always on (§17.10)
 
 
+class TasksConfig(_StrictModel):
+    """M7 durable Tasks (§13.9, FR-MM-04).
+
+    - `max_attachment_bytes`: `PUT /tasks/{id}/attachments/{name}` size cap
+      ("with size caps"). Defaults to the §13.8 body limit; operators may
+      raise it for voice notes/documents (the body-limit middleware treats
+      attachment routes with this limit separately).
+    - `result_retention_s`: §13.9 hard cap — "Results retained ≤ 1 h".
+      Encrypted at rest (ADR-011 + §13.9); purged on fetch-ack (DELETE) or
+      expiry sweep.
+    """
+
+    max_attachment_bytes: int = Field(default=10_485_760, gt=0)  # 10 MiB [DESIGN]
+    result_retention_s: int = Field(default=3600, ge=30, le=3600)  # §13.9 ≤ 1 h
+    max_concurrent: int = Field(default=2, ge=1)  # §13.8 spirit (per-device 2)
+
+
 class ControlPlaneConfig(_StrictModel):
     """Optional M6 Control Plane (§12, FR-CP-01..04; §22.1 "optional").
 
@@ -206,6 +228,7 @@ class Settings(BaseSettings):
     )
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    tasks: TasksConfig = Field(default_factory=TasksConfig)  # §13.9 (M7)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
 
     # -- data dir ----------------------------------------------------------

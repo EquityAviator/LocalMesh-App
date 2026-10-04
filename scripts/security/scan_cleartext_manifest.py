@@ -24,8 +24,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKIP_DIRS = {".git", "node_modules", ".venv", "build", ".gradle", "__pycache__"}
 
-CLEARNETWORK_ATTR = re.compile(r'android:usesCleartextTraffic\s*=\s*"true"', re.IGNORECASE)
-NSC_REFERENCE = re.compile(r'android:networkSecurityConfig\s*=\s*"@xml/([A-Za-z0-9_.]+)"')
+CLEARNETWORK_ATTR = re.compile(
+    r'android:usesCleartextTraffic\s*=\s*"true"', re.IGNORECASE
+)
+NSC_REFERENCE = re.compile(
+    r'android:networkSecurityConfig\s*=\s*"@xml/([A-Za-z0-9_.]+)"'
+)
 NSC_CLEARNETWORK = re.compile(r'cleartextTrafficPermitted\s*=\s*"true"', re.IGNORECASE)
 
 
@@ -59,7 +63,9 @@ def main() -> int:
         rel = manifest.relative_to(REPO_ROOT)
         text = manifest.read_text(encoding="utf-8", errors="replace")
         if CLEARNETWORK_ATTR.search(text):
-            violations.append(f'{rel}: android:usesCleartextTraffic="true" (SEC-N1, §17.9)')
+            violations.append(
+                f'{rel}: android:usesCleartextTraffic="true" (SEC-N1, §17.9)'
+            )
         for nsc_name in NSC_REFERENCE.findall(text):
             for nsc in find_nsc_files(nsc_name):
                 nsc_text = nsc.read_text(encoding="utf-8", errors="replace")
@@ -70,12 +76,16 @@ def main() -> int:
                     )
 
     if violations:
-        print("FAIL: cleartext permission found (SEC-N1; outside §17.9 debug-only scope):")
+        print(
+            "FAIL: cleartext permission found (SEC-N1; outside §17.9 debug-only scope):"
+        )
         for v in violations:
             print(f"  - {v}")
         return 1
 
-    print(f"Cleartext manifest scan: OK ({len(manifests)} manifest(s) scanned, no cleartext)")
+    print(
+        f"Cleartext manifest scan: OK ({len(manifests)} manifest(s) scanned, no cleartext)"
+    )
     return 0
 
 

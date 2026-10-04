@@ -81,10 +81,36 @@ class TypedValue:
 
 @dataclass(frozen=True)
 class ChatMessage:
-    """One chat message — string content in v1 (§13.6)."""
+    """One chat message (§13.6).
+
+    M7 (FR-MM-01): `content` is a string OR an OpenAI-style list of content
+    parts (`[{"type": "text", …}, {"type": "image_url", …}, …]`). Parts pass
+    through to OpenAI-compatible Backends verbatim; the API layer (§13.6
+    policy + capability gate) is the only place that validates them. Stored
+    as a tuple to keep the frozen-dataclass contract; adapters serialize it
+    as a JSON array.
+    """
 
     role: Literal["system", "user", "assistant"]
-    content: str
+    content: str | tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class EmbeddingRequest:
+    """One embeddings call (FR-MM-03, M7)."""
+
+    model: str  # backend_model_id
+    texts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TranscriptionRequest:
+    """One speech-to-text call (FR-MM-02, M7; Whisper-class adapter)."""
+
+    model: str  # backend_model_id
+    audio: bytes
+    filename: str = "audio.wav"
+    language: str | None = None
 
 
 @dataclass(frozen=True)
@@ -361,6 +387,26 @@ class ControlPlaneClient(Protocol):
         no CP row of its own — e.g. the phone never registered with the CP).
         """
         ...
+
+
+@runtime_checkable
+class EmbeddingBackend(Protocol):
+    """Optional embeddings surface (FR-MM-03, M7; §6 — OpenAI-compatible
+    `/v1/embeddings` is documented for LM Studio and Ollama alike).
+
+    Implementations raise `MeshError` (Appendix D) on failure; the RAG
+    service degrades per §10.3 rule 2/3 (no raw backend bodies surfaced).
+    """
+
+    async def embed(self, texts: tuple[str, ...], backend_model_id: str) -> list[list[float]]: ...
+
+
+@runtime_checkable
+class TranscriptionBackend(Protocol):
+    """Optional speech-to-text surface (FR-MM-02, M7; separate Whisper-class
+    service per S-13 — the spec explicitly plans a standalone adapter)."""
+
+    async def transcribe(self, request: TranscriptionRequest) -> str: ...
 
 
 @runtime_checkable

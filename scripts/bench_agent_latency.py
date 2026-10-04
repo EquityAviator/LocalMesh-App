@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import itertools
 import json
 import statistics
 import sys
@@ -46,11 +47,10 @@ for _p in ("tools/fake-backends", "agent/src"):
     if _abs.is_dir() and str(_abs) not in sys.path:
         sys.path.insert(0, str(_abs))
 
-import httpx  # noqa: E402
-from fake_ollama import DEFAULT_MODEL, FakeOllama  # noqa: E402
-
-from localmesh_agent.app import create_app  # noqa: E402
-from localmesh_agent.config import Settings  # noqa: E402
+import httpx
+from fake_ollama import DEFAULT_MODEL, FakeOllama
+from localmesh_agent.app import create_app
+from localmesh_agent.config import Settings
 
 MESH_MODEL_ID = f"ollama::{DEFAULT_MODEL}"
 
@@ -78,7 +78,11 @@ async def stream_once(client: httpx.AsyncClient) -> dict[str, Any]:
     async with client.stream(
         "POST",
         "/mesh/v1/chat/completions",
-        json={"model": MESH_MODEL_ID, "messages": [{"role": "user", "content": "Hi"}], "stream": True},
+        json={
+            "model": MESH_MODEL_ID,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": True,
+        },
     ) as response:
         response.raise_for_status()
         async for chunk in response.aiter_text():
@@ -93,10 +97,7 @@ async def stream_once(client: httpx.AsyncClient) -> dict[str, Any]:
     if t_first_byte is None or t_first_data is None or len(data_marks) < 2:
         raise RuntimeError("stream ended before enough SSE data events arrived")
 
-    gaps = [
-        (b - a) * 1000.0
-        for a, b in zip(data_marks, data_marks[1:])
-    ]
+    gaps = [(b - a) * 1000.0 for a, b in itertools.pairwise(data_marks)]
     return {
         "ttft_ms": (t_first_data - t_start) * 1000.0,
         "first_byte_ms": (t_first_byte - t_start) * 1000.0,
@@ -117,9 +118,13 @@ async def run(iterations: int, warmup: int) -> dict[str, Any]:
             settings = Settings(
                 agent={"data_dir": data_dir},
                 mdns={"enabled": False},
-                backends=[{"id": "ollama", "kind": "ollama", "base_url": _fake_url(server)}],
+                backends=[
+                    {"id": "ollama", "kind": "ollama", "base_url": _fake_url(server)}
+                ],
             )
-            app = create_app(settings, dev_insecure=True)  # QUESTION-105 dev token bypass
+            app = create_app(
+                settings, dev_insecure=True
+            )  # QUESTION-105 dev token bypass
             async with app.router.lifespan_context(app):  # type: ignore[attr-defined]
                 transport = httpx.ASGITransport(app=app)
                 async with httpx.AsyncClient(
@@ -160,20 +165,27 @@ def _fake_url(server: FakeOllama) -> str:
 
 
 def render(results: dict[str, Any]) -> str:
+    header = (
+        f"iterations={results['iterations']} warmup={results['warmup']} "
+        f"model={results['mesh_model_id']}"
+    )
     lines = [
         "LocalMesh Agent — §19.1 latency skeleton (sandbox-relative numbers)",
-        f"iterations={results['iterations']} warmup={results['warmup']} "
-        f"model={results['mesh_model_id']}",
+        header,
         "",
         f"{'metric':<34}{'p50':>9}{'p95':>9}{'max':>9}{'mean':>9}",
-        f"{'TTFT, first data event (ms)':<34}"
-        f"{results['ttft_ms']['p50']:>9.2f}{results['ttft_ms']['p95']:>9.2f}"
-        f"{results['ttft_ms']['max']:>9.2f}{results['ttft_ms']['mean']:>9.2f}",
-        f"{'chunk inter-arrival (ms)':<34}"
-        f"{results['chunk_gap_ms']['p50']:>9.2f}{results['chunk_gap_ms']['p95']:>9.2f}"
-        f"{results['chunk_gap_ms']['max']:>9.2f}{results['chunk_gap_ms']['mean']:>9.2f}",
+        (
+            f"{'TTFT, first data event (ms)':<34}"
+            f"{results['ttft_ms']['p50']:>9.2f}{results['ttft_ms']['p95']:>9.2f}"
+            f"{results['ttft_ms']['max']:>9.2f}{results['ttft_ms']['mean']:>9.2f}"
+        ),
+        (
+            f"{'chunk inter-arrival (ms)':<34}"
+            f"{results['chunk_gap_ms']['p50']:>9.2f}{results['chunk_gap_ms']['p95']:>9.2f}"
+            f"{results['chunk_gap_ms']['max']:>9.2f}{results['chunk_gap_ms']['mean']:>9.2f}"
+        ),
         "",
-        f"§19.1 budgets (for reference — these samples are NOT Agent-added):",
+        "§19.1 budgets (for reference — these samples are NOT Agent-added):",
         f"  {TARGETS['ttft_p95_ms']['label']:<50} ≤ {TARGETS['ttft_p95_ms']['budget']} ms",
         f"  {TARGETS['chunk_gap_p95_ms']['label']:<50} ≤ {TARGETS['chunk_gap_p95_ms']['budget']} ms",
         "",

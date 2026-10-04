@@ -12,9 +12,9 @@ from typing import Any, Literal
 
 from localmesh_agent.core.errors import MeshError
 
-# §13.6 — the ONLY chat parameters accepted in v1. Anything else -> 422 with
-# details.unknown_fields. Image/audio parts, tools, response_format arrive
-# with their milestones (M7/M8).
+# §13.6 — the ONLY chat parameters accepted. M7 (§13.6: "Image/audio parts …
+# arrive with their milestones (M7/M8)"): message content MAY be a list of
+# OpenAI-style parts. `tools`/`response_format` stay outside until M8.
 ALLOWED_CHAT_PARAMS: frozenset[str] = frozenset(
     {
         "model",
@@ -30,6 +30,19 @@ ALLOWED_CHAT_PARAMS: frozenset[str] = frozenset(
         "x_mesh",
     }
 )
+
+# M7 content part types (§13.6, FR-MM-01/02). Shape [DESIGN] follows the
+# OpenAI conventions the Backends already speak (ADR-009).
+ALLOWED_PART_TYPES: frozenset[str] = frozenset({"text", "image_url", "input_audio"})
+
+# §13.9 — Task contract (shape fixed at the M0 stub).
+ALLOWED_TASK_TOP_LEVEL: frozenset[str] = frozenset({"type", "input", "options"})
+TASK_INPUT_FIELDS: dict[str, frozenset[str]] = {
+    "chat": frozenset({"model", "messages", "temperature", "max_tokens"}),
+    "vision": frozenset({"model", "messages", "temperature", "max_tokens"}),
+    "transcribe": frozenset({"audio", "model", "language"}),
+    "doc_qa": frozenset({"question", "model", "max_tokens"}),
+}
 
 _ALLOWED_ROLES = ("system", "user", "assistant")  # §13.6
 _MAX_MESSAGES = 200  # §13.8
@@ -71,10 +84,25 @@ def validate_chat_payload(payload: dict[str, Any]) -> dict[str, Any]:
         role = message.get("role")
         if role not in _ALLOWED_ROLES:
             raise MeshError("INVALID_REQUEST", f"message role must be one of {_ALLOWED_ROLES}.")
+        unknown_message_keys = sorted(set(message) - {"role", "content"})
+        if unknown_message_keys:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Message contains fields outside the v1 allow-list (§13.6).",
+                details={"unknown_fields": unknown_message_keys},
+            )
         content = message.get("content")
-        # §13.6: string content in v1 (no image/audio parts before M7).
-        if not isinstance(content, str):
-            raise MeshError("INVALID_REQUEST", "message content must be a string in v1 (§13.6).")
+        # §13.6 (M7): string content OR an OpenAI-style part list. Parts carry
+        # binary references by value; the 2 MiB body limit (§13.8) bounds them.
+        if isinstance(content, str):
+            continue
+        if isinstance(content, list) and content:
+            _validate_content_parts(content)
+            continue
+        raise MeshError(
+            "INVALID_REQUEST",
+            "message content must be a string or a non-empty list of content parts (§13.6).",
+        )
 
     stream = payload.get("stream", True)
     if not isinstance(stream, bool):
@@ -142,6 +170,152 @@ def validate_model_ref_payload(payload: dict[str, Any]) -> str:
     if not isinstance(mesh_model_id, str) or not mesh_model_id:
         raise MeshError("INVALID_REQUEST", "'mesh_model_id' is required.")
     return mesh_model_id
+
+
+def _validate_content_parts(parts: list[Any]) -> None:
+    """Shape-check M7 content parts (§13.6; FR-MM-01/02).
+
+    Capability gating happens AFTER model resolution in the API layer
+    (UNSUPPORTED_CAPABILITY, 501); here we only enforce shape so the
+    Backend never receives garbage.
+    """
+    for part in parts:
+        if not isinstance(part, dict):
+            raise MeshError("INVALID_REQUEST", "Content parts must be objects.")
+        part_type = part.get("type")
+        if part_type not in ALLOWED_PART_TYPES:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Content part type outside the M7 allow-list (§13.6).",
+                details={"allowed_types": sorted(ALLOWED_PART_TYPES)},
+            )
+        unknown_part_keys = sorted(set(part) - {"type", "text", "image_url", "input_audio"})
+        if unknown_part_keys:
+            raise MeshError(
+                "INVALID_REQUEST",
+                "Content part contains fields outside the M7 allow-list (§13.6).",
+                details={"unknown_fields": unknown_part_keys},
+            )
+        if part_type == "text":
+            if not isinstance(part.get("text"), str):
+                raise MeshError("INVALID_REQUEST", "text part requires a string 'text'.")
+        elif part_type == "image_url":
+            image_url = part.get("image_url")
+            url = image_url.get("url") if isinstance(image_url, dict) else None
+            if not isinstance(url, str) or not url:
+                raise MeshError(
+                    "INVALID_REQUEST", "image_url part requires image_url.url (data: or https:)."
+                )
+            if not (url.startswith("data:image/") or url.startswith("https://")):
+                raise MeshError(
+                    "INVALID_REQUEST",
+                    "image_url.url must be a data:image/* or https: URL (§17.9: no cleartext).",
+                )
+        else:  # input_audio
+            audio = part.get("input_audio")
+            if not isinstance(audio, dict):
+                raise MeshError("INVALID_REQUEST", "input_audio part requires an object.")
+            data = audio.get("data")
+            audio_format = audio.get("format")
+            if not isinstance(data, str) or not data:
+                raise MeshError("INVALID_REQUEST", "input_audio requires base64 'data'.")
+            if audio_format not in ("wav", "mp3"):
+                raise MeshError("INVALID_REQUEST", "input_audio.format must be 'wav' or 'mp3'.")
+
+
+def validate_task_payload(payload: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """Validate `POST /tasks` (§13.9): `{type, input, options}`.
+
+    Returns (type, input, options); raises `MeshError("INVALID_REQUEST")`
+    with §13.4 `details.unknown_fields` semantics. `options` is a free-form
+    object but unknown top-level keys are rejected; per-type input fields
+    are allow-listed.
+    """
+    from localmesh_agent.config import TASK_TYPES
+
+    if not isinstance(payload, dict):
+        raise MeshError("INVALID_REQUEST", "Request body must be a JSON object.")
+    unknown = sorted(set(payload) - ALLOWED_TASK_TOP_LEVEL)
+    if unknown:
+        raise MeshError(
+            "INVALID_REQUEST",
+            "Request contains parameters outside the §13.9 allow-list.",
+            details={"unknown_fields": unknown},
+        )
+    task_type = payload.get("type")
+    if task_type not in TASK_TYPES:
+        raise MeshError(
+            "INVALID_REQUEST",
+            f"'type' must be one of {TASK_TYPES} (§13.9).",
+        )
+    task_input = payload.get("input")
+    if not isinstance(task_input, dict):
+        raise MeshError("INVALID_REQUEST", "'input' must be an object.")
+    allowed_fields = TASK_INPUT_FIELDS[str(task_type)]
+    unknown_input = sorted(set(task_input) - allowed_fields)
+    if unknown_input:
+        raise MeshError(
+            "INVALID_REQUEST",
+            "Task input contains fields outside the §13.9 allow-list.",
+            details={"unknown_fields": unknown_input},
+        )
+    if task_type in ("chat", "vision"):
+        inner = {
+            "model": task_input.get("model"),
+            "messages": task_input.get("messages"),
+            "stream": False,
+        }
+        inner_payload = validate_chat_payload(inner)
+        # chat/vision tasks run server-side, non-streamed by construction.
+        if task_type == "vision":
+            _require_vision_parts(task_input["messages"])
+        task_input = {
+            "model": inner_payload["model"],
+            "messages": inner_payload["messages"],
+            "temperature": inner_payload.get("temperature"),
+            "max_tokens": inner_payload.get("max_tokens"),
+        }
+    elif task_type == "transcribe":
+        audio = task_input.get("audio")
+        if not isinstance(audio, str) or not audio:
+            raise MeshError("INVALID_REQUEST", "'input.audio' must name an uploaded attachment.")
+        model = task_input.get("model")
+        if model is not None and (not isinstance(model, str) or not model):
+            raise MeshError("INVALID_REQUEST", "'input.model' must be a string when present.")
+        language = task_input.get("language")
+        if language is not None and not isinstance(language, str):
+            raise MeshError("INVALID_REQUEST", "'input.language' must be a string when present.")
+    else:  # doc_qa
+        question = task_input.get("question")
+        if not isinstance(question, str) or not question.strip():
+            raise MeshError("INVALID_REQUEST", "'input.question' is required for doc_qa.")
+        model = task_input.get("model")
+        if not isinstance(model, str) or not model:
+            raise MeshError("INVALID_REQUEST", "'input.model' is required for doc_qa.")
+    options = payload.get("options") or {}
+    if not isinstance(options, dict):
+        raise MeshError("INVALID_REQUEST", "'options' must be an object.")
+    source_ids = options.get("source_ids")
+    if source_ids is not None:
+        if not isinstance(source_ids, list) or not all(isinstance(s, str) for s in source_ids):
+            raise MeshError("INVALID_REQUEST", "options.source_ids must be a list of strings.")
+    return str(task_type), task_input, options
+
+
+def _require_vision_parts(messages: list[Any]) -> None:
+    """A vision task must actually carry an image part (fail fast, §10.4)."""
+    for message in messages:
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, list):
+                if any(
+                    isinstance(part, dict) and part.get("type") == "image_url" for part in content
+                ):
+                    return
+    raise MeshError(
+        "INVALID_REQUEST",
+        "A vision task requires at least one image_url content part (FR-MM-01).",
+    )
 
 
 def _validate_number(payload: dict[str, Any], key: str, low: float, high: float) -> None:

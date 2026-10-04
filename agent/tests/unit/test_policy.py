@@ -41,15 +41,24 @@ def test_unknown_role_rejected() -> None:
         validate_chat_payload({"model": "m", "messages": [{"role": "tool", "content": "x"}]})
 
 
-def test_non_string_content_rejected_v1() -> None:
-    """§13.6: string content in v1 — image/audio parts arrive at M7."""
-    with pytest.raises(MeshError):
-        validate_chat_payload(
-            {
-                "model": "m",
-                "messages": [{"role": "user", "content": [{"type": "text", "text": "x"}]}],
-            }
-        )
+def test_content_must_be_string_or_parts() -> None:
+    """§13.6: string content; M7 (FR-MM-01) adds OpenAI-style part lists.
+    Everything else (numbers, empty lists, malformed parts) stays rejected."""
+    # Parts are accepted since M7.
+    validate_chat_payload(
+        {
+            "model": "m",
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "x"}]}],
+        }
+    )
+    for bad_content in (42, None, [], [["text"]]):
+        with pytest.raises(MeshError):
+            validate_chat_payload(
+                {
+                    "model": "m",
+                    "messages": [{"role": "user", "content": bad_content}],
+                }
+            )
 
 
 def test_message_count_limit_200() -> None:

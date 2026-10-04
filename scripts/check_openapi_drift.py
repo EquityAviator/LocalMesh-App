@@ -20,7 +20,11 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from export_openapi import REPO_ROOT, build_openapi, reexec_with_agent_venv  # noqa: E402
+from export_openapi import (
+    REPO_ROOT,
+    build_openapi,
+    reexec_with_agent_venv,
+)
 
 COMMITTED = REPO_ROOT / "docs" / "openapi" / "mesh-v1.json"
 
@@ -59,7 +63,9 @@ def main() -> int:
             print(f"  {d}")
         if len(diffs) > 20:
             print(f"  ... and {len(diffs) - 20} more")
-        print("Fix: run `python scripts/export_openapi.py` and commit the regenerated file.")
+        print(
+            "Fix: run `python scripts/export_openapi.py` and commit the regenerated file."
+        )
         return 1
     print("OpenAPI drift check: OK (committed spec matches generated output)")
     return 0

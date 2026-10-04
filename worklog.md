@@ -519,3 +519,18 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 全绿�
 4. 全 src mypy --strict 范围决策（26 处 CI 范围外）仍待 owner call，未动。
 5. device_updated 审计扩展（AUDIT_EVENTS + device_updated）与 §17.10 "fields" 键扩展均为 [DESIGN] 标注——若 owner 收紧词表，移除是一处小 diff。
 6. 沙箱注：HEAD 会间会被切回 main，本轮提交直接落 main。
+
+---
+Task ID: 20 — M6 Control Plane full implementation (§12, FR-CP-01..04)
+Agent: Z.ai Code (main agent)
+Task: User directive "complete M0–M9 one by one with full-fledged implementation". This round: M6.
+
+Work Log:
+- Owner authorization recorded: the milestone-review session directive closes the Q-05 gate; ADR-019 written (docs/adr/019-control-plane-activation.md).
+- control-plane/ built: migrations/0001_init.sql (§12.2 devices table + RLS **verbatim**), README.md (deployment + flows + §17.6 keyring wiring), scripts/schema_content_scan.py (TC-SEC-08 — build fails on any column matching /prompt|message|content|completion|attachment/i per FR-CP-04; comments stripped before matching).
+- Agent side: ControlPlaneClient port (adapters/ports.py); SupabaseControlPlaneClient adapter (PostgREST + Edge-Function shapes, [UNVERIFIED] → QUESTION-107; bytea \x… hex; Content-Range count parsing; 5 s bounded timeout; errors carry no URL/key echoes); ControlPlaneService in core/ (state machine disabled/unregistered/ok/offline, §12.3 failure mode "continue with local data", register via one-time link code, 60 s heartbeat loop, best-effort revocation mirror by public_key); config gates ([control_plane] enabled requires https url + auth_ref; keyring lookup, §17.6); app factory wiring (lifespan start/stop, fire-and-forget mirror task set drained at shutdown, DeviceService revoke fan-out); admin endpoints POST /admin/control-plane/register + GET /admin/control-plane/status (loopback, X-Admin-Token); /admin/status gains control_plane block; audit vocabulary + control_plane_registered [DESIGN open-vocabulary hook]; import-linter forbidden list + adapters.controlplane.
+- QUESTION-107 opened (Supabase call shapes [UNVERIFIED]); activation itself APPROVED (ADR-019).
+- Tests +31: unit 19 (client shapes/state machine/codec/config gates; metadata-only status asserts no key/URL), security 6 (TC-SEC-08: shipped schema green, forbidden columns detected, comment false-positive guard, CLI exit codes), integration 6 (admin register e2e w/ fake CP MockTransport, 503 envelope on CP down, revocation mirror URL/body assertions, audit event, disabled → 422).
+
+Stage Summary:
+- M6 COMPLETE (sandbox surface): main = ff21f12. Gates: ruff clean (104 files), mypy --strict (core+security 16 files) PASS, import-linter 3/3 KEPT, pytest 284 unit + 83 integration + 20 security = 387 passed, 0 failures. TC-SEC-08 delivered (8/10 per security README). Residual owner actions: Supabase deployment + real call-shape verification (QUESTION-107), Google Sign-In config (FR-CP-01 App side).

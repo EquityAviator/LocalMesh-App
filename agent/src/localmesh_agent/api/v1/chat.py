@@ -19,6 +19,15 @@ SSE wire format (§13.7, normative):
 
 The Agent is stateless for chat (ADR-011, FR-CHAT-04): nothing about Content
 is persisted or logged (canary test TC-SEC-01).
+
+M7 (FR-MM-01/02, §13.6): message content may be an OpenAI-style part list.
+- image parts pass through to the Backend and require the resolved model to
+  report the `vision` capability (§13.5) — else 501 UNSUPPORTED_CAPABILITY.
+- audio parts (`input_audio`) are ACCEPTED BY SHAPE but there is no v1
+  Backend contract for audio-in chat (§6: neither Backend documents it; S-13
+  routes STT through the separate Whisper service) — chat with audio parts
+  returns 501 UNSUPPORTED_CAPABILITY with a hint to use `POST /tasks`
+  type=transcribe (FR-MM-02).
 """
 
 from __future__ import annotations
@@ -45,6 +54,46 @@ PING_INTERVAL_S = 15.0  # §13.7 keepalive
 
 def _sse_event(event: str, data: str) -> str:
     return f"event: {event}\ndata: {data}\n\n"
+
+
+def _mesh_message(m: dict[str, Any]) -> ChatMessage:
+    """Policy-validated message dict → frozen ChatMessage (M7 parts aware)."""
+    content = m["content"]
+    if isinstance(content, str):
+        return ChatMessage(role=str(m["role"]), content=content)
+    return ChatMessage(role=str(m["role"]), content=tuple(content))
+
+
+def _capability_gate(messages: list[dict[str, Any]], entry: Any) -> None:
+    """M7 gate (§13.5 closed vocabulary; §10.4 reject-don't-guess):
+    image parts need `vision`; audio parts in chat are out of the v1 Backend
+    contract (S-13: STT lives in the separate Whisper adapter)."""
+    has_image = False
+    has_audio = False
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "image_url":
+                has_image = True
+            elif part.get("type") == "input_audio":
+                has_audio = True
+    if has_image and "vision" not in entry.capabilities:
+        raise MeshError(
+            "UNSUPPORTED_CAPABILITY",
+            "The selected model does not report vision (§13.5).",
+            details={"required_capability": "vision"},
+        )
+    if has_audio:
+        raise MeshError(
+            "UNSUPPORTED_CAPABILITY",
+            "Audio parts in chat are not supported in v1; use POST /tasks "
+            "type=transcribe (FR-MM-02, S-13).",
+            details={"required_capability": "speech_to_text", "hint": "POST /tasks"},
+        )
 
 
 def _openai_chunk_json(request_id: str, mesh_model_id: str, chunk: ChatChunk, created: int) -> str:
@@ -129,10 +178,7 @@ async def _stream(
             ChatRequest(
                 model=mesh_model_id,
                 backend_model_id=backend_model_id,
-                messages=tuple(
-                    ChatMessage(role=str(m["role"]), content=str(m["content"]))
-                    for m in payload["messages"]
-                ),
+                messages=tuple(_mesh_message(m) for m in payload["messages"]),
                 stream=True,
                 temperature=payload.get("temperature"),
                 top_p=payload.get("top_p"),
@@ -365,6 +411,7 @@ async def chat_completions(request: Request) -> object:
         usage_tokens: int | None = None
         started = time.monotonic()
         backend, backend_model_id, entry = request.app.state.router.resolve(str(payload["model"]))
+        _capability_gate(payload["messages"], entry)
         job = request.app.state.scheduler.admit(
             request_id=request_id, device_id=principal.device_id, backend_id=backend.id
         )
@@ -374,10 +421,7 @@ async def chat_completions(request: Request) -> object:
                 ChatRequest(
                     model=entry.mesh_model_id,
                     backend_model_id=backend_model_id,
-                    messages=tuple(
-                        ChatMessage(role=str(m["role"]), content=str(m["content"]))
-                        for m in payload["messages"]
-                    ),
+                    messages=tuple(_mesh_message(m) for m in payload["messages"]),
                     stream=False,
                     temperature=payload.get("temperature"),
                     max_tokens=payload.get("max_tokens"),
@@ -439,6 +483,7 @@ async def chat_completions(request: Request) -> object:
     # Resolve + admit BEFORE the response starts so error envelopes (404
     # MODEL_NOT_FOUND, 429 QUEUE_FULL, §13.4) go out with their HTTP status.
     backend, backend_model_id, entry = request.app.state.router.resolve(str(payload["model"]))
+    _capability_gate(payload["messages"], entry)
     job = request.app.state.scheduler.admit(
         request_id=request_id, device_id=principal.device_id, backend_id=backend.id
     )

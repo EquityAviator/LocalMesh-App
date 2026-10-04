@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from localmesh_agent.adapters.backends.lmstudio import LMStudioBackend
 from localmesh_agent.adapters.backends.ollama import OllamaBackend
 from localmesh_agent.adapters.backends.openai_compat import OpenAICompatBackend
+from localmesh_agent.adapters.backends.whisper import WhisperBackend
 from localmesh_agent.adapters.controlplane import SupabaseControlPlaneClient
 from localmesh_agent.adapters.discovery.mdns import (
     build_mdns_advertiser,
@@ -43,7 +44,7 @@ from localmesh_agent.adapters.hardware.psutil_probe import (
 from localmesh_agent.adapters.ports import InferenceBackend, SystemClock
 from localmesh_agent.adapters.tailscale import TailscaleCliProbe
 from localmesh_agent.api.errors import mesh_error_handler
-from localmesh_agent.api.v1 import auth, chat, device, health, info, models, pair, requests
+from localmesh_agent.api.v1 import auth, chat, device, health, info, models, pair, requests, tasks
 from localmesh_agent.api.v1.auth import ChallengeStore
 from localmesh_agent.config import Settings
 from localmesh_agent.core.control_plane import (
@@ -52,12 +53,15 @@ from localmesh_agent.core.control_plane import (
 )
 from localmesh_agent.core.entities import new_uuid7
 from localmesh_agent.core.errors import MeshError
+from localmesh_agent.core.rag import RagService
 from localmesh_agent.core.registry import CapabilityRegistry
 from localmesh_agent.core.router import Router
 from localmesh_agent.core.scheduler import Scheduler
+from localmesh_agent.core.tasks import TaskService
 from localmesh_agent.core.warm import KeepWarmScheduler
 from localmesh_agent.observability.logging import configure_logging, get_logger
 from localmesh_agent.observability.metrics import MetricsRegistry
+from localmesh_agent.security import task_crypto
 from localmesh_agent.security.devices import DeviceService
 from localmesh_agent.security.pairing import PairingService
 from localmesh_agent.security.ratelimit import SlidingWindowLimiter
@@ -110,6 +114,16 @@ def build_adapters(settings: Settings) -> list[InferenceBackend]:
                     backend.base_url,
                     first_token_timeout_s=first_token_timeout_s,
                     total_stream_cap_s=total_stream_cap_s,
+                )
+            )
+        elif backend.kind == "whisper":
+            # M7 (FR-MM-02): the separate Whisper-class STT service. Keyring
+            # auth mirrors the other adapters (§17.6); never used for chat.
+            adapters.append(
+                WhisperBackend(
+                    backend.id,
+                    backend.base_url,
+                    auth_token=auth_token,
                 )
             )
         else:
@@ -267,6 +281,41 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     # §14.3 dev-mode Device identity (M1 loopback only; token auth is WP-08).
     dev_device_id = f"dv_{new_uuid7()}"
 
+    # -- M7 (§13.9, FR-MM-01..04): durable Tasks + local RAG. Content lives
+    #    only as AES-256-GCM ciphertext (task_crypto; ADR-011 exception with
+    #    hard expiry), the sweeper enforces the ≤ 1 h retention, and
+    #    chat/vision tasks run through the SAME §16 Scheduler as chat.
+    tasks_key = task_crypto.load_or_create_key(data_dir)
+    task_service = TaskService(
+        store,
+        key=tasks_key,
+        retention_s=settings.tasks.result_retention_s,
+        max_concurrent=settings.tasks.max_concurrent,
+        scheduler=scheduler,
+        router=router,
+        transcriber=next(  # FR-MM-02: the (optional) Whisper-class adapter
+            (a for a in adapters if getattr(a, "kind", None) == "whisper"), None
+        ),
+        embedder=None,  # wired at lifespan-start from the Capability Registry
+        embed_model_backend_id=None,
+        new_task_id=lambda: f"tk_{new_uuid7()}",
+        clock=clock,
+    )
+    rag_service = RagService(store, None, None, tasks_key)
+    task_service.set_rag(rag_service)
+
+    def _wire_embedder() -> None:
+        """FR-MM-03: pick the first embedding-capable Registry entry (source
+        = backend report or user override, §13.5) once backends answered."""
+        adapter_by_id = {a.id: a for a in adapters}
+        for entry in registry.entries():
+            if "embedding" not in entry.capabilities:
+                continue
+            candidate = adapter_by_id.get(entry.backend_id)
+            if candidate is not None and hasattr(candidate, "embed"):
+                rag_service.configure_embedder(candidate, entry.backend_model_id)
+                return
+
     # -- WP-08 security services (§10.4 PairingService/TokenService/
     #    DeviceService; §13.8 limiter; all state lives on app.state, §10.5) --
     # M6 (§12): the Control Plane service is OPTIONAL and off by default.
@@ -341,6 +390,10 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
         # §16.3 background polling continues afterwards.
         await registry.refresh()
         registry.start_polling()
+        _wire_embedder()  # M7 (FR-MM-03): needs a refreshed registry
+        # M7 (§13.9): the retention sweeper starts with the Agent; chat and
+        # pairing NEVER wait on it (fire-and-forget background loop).
+        task_service.start()
         # WP-14 (§10.6 step 7): Tailnet status is part of the ready report.
         # Detection is best effort — any unexpected failure degrades to None
         # (LAN-only), never blocks the Agent from serving (§18.6, T-21).
@@ -391,6 +444,7 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
             control_plane.start()
         yield
         # Shutdown is the exact reverse (§10.6 symmetry).
+        await task_service.stop()
         if control_plane is not None:
             await control_plane.stop()
         if _cp_mirror_tasks:  # drain in-flight mirrors before store closes
@@ -439,10 +493,13 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     app.state.hardware = hardware
     app.state.mdns = mdns_advertiser
     app.state.control_plane = control_plane  # M6 (§12): None when disabled
+    app.state.tasks = task_service  # M7 (§13.9)
+    app.state.tasks_key = tasks_key  # M7: at-rest key (never leaves the process)
+    app.state.rag = rag_service
 
     # Routers (§13.1): M1 scope (models/chat/requests/health) + WP-08 scope
-    # (info/pair/auth) + WP-15 scope (device, §22.2 M5). tasks.py arrives
-    # with M7 (§13.9) — not registered here (scope fence).
+    # (info/pair/auth) + WP-15 scope (device, §22.2 M5) + M7 scope (tasks,
+    # §13.9).
     app.include_router(info.router)
     app.include_router(pair.router)
     app.include_router(auth.router)
@@ -451,6 +508,7 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     app.include_router(device.router)
     app.include_router(chat.router)
     app.include_router(requests.router)
+    app.include_router(tasks.router)
 
     # §13.4 envelope for every MeshError.
     app.add_exception_handler(MeshError, mesh_error_handler)  # type: ignore[arg-type]
@@ -470,8 +528,12 @@ def create_app(settings: Settings, *, dev_insecure: bool = False) -> FastAPI:
     @app.middleware("http")
     async def body_limit(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
         # §13.8: request body (JSON) default 2 MiB → 413 PAYLOAD_TOO_LARGE.
+        # M7 (§13.9): task attachment uploads use the dedicated attachment cap
+        # (`tasks.max_attachment_bytes`) — voice notes/documents are bigger.
         declared = request.headers.get("Content-Length")
         limit = app.state.settings.limits.max_body_bytes
+        if request.url.path.startswith("/mesh/v1/tasks/") and "/attachments/" in request.url.path:
+            limit = app.state.settings.tasks.max_attachment_bytes
         if declared is not None and declared.isdigit() and int(declared) > limit:
             return JSONResponse(
                 status_code=413,

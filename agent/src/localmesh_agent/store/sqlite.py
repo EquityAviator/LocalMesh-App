@@ -27,7 +27,10 @@ from localmesh_agent.observability.logging import ALLOWED_LOG_KEYS
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 # (version, filename) — exactly one migration exists at M1 (§14.1).
-_MIGRATIONS: tuple[tuple[int, str], ...] = ((1, "0001_init.sql"),)
+_MIGRATIONS: tuple[tuple[int, str], ...] = (
+    (1, "0001_init.sql"),
+    (2, "0002_tasks.sql"),  # M7 (§13.9): durable Tasks + task files + RAG
+)
 
 # §14.1 retention policy (normative).
 AUDIT_RETENTION_SECONDS = 90 * 24 * 3600  # 90 days
@@ -62,6 +65,8 @@ AUDIT_EVENTS: frozenset[str] = frozenset(
 )
 
 # §14.1 — expected tables after migration 0001 (drift guard, asserted in tests).
+# M7 (§13.9): migration 0002 adds tasks/task_files/rag_* — expectations in
+# EXPECTED_TABLES_M7 below (kept separate so the §14.1 verbatim guard stays).
 EXPECTED_TABLES: dict[str, frozenset[str]] = {
     "agent_identity": frozenset({"id", "agent_id", "display_name", "created_at"}),
     "devices": frozenset(
@@ -81,6 +86,37 @@ EXPECTED_TABLES: dict[str, frozenset[str]] = {
     "backends": frozenset({"backend_id", "kind", "base_url", "enabled", "auth_ref"}),
     "model_cache": frozenset({"mesh_model_id", "entry_json", "refreshed_at"}),
     "settings": frozenset({"key", "value"}),
+}
+
+# M7 (§13.9) — migration 0002 tables (drift guard; Content only as ciphertext).
+EXPECTED_TABLES_M7: dict[str, frozenset[str]] = {
+    "tasks": frozenset(
+        {
+            "task_id",
+            "device_id",
+            "type",
+            "status",
+            "progress",
+            "enc_input",
+            "input_nonce",
+            "enc_options",
+            "options_nonce",
+            "error_code",
+            "error_text",
+            "created_at",
+            "started_at",
+            "finished_at",
+            "expires_at",
+            "enc_result",
+            "result_nonce",
+        }
+    ),
+    "task_files": frozenset(
+        {"task_id", "name", "size_bytes", "enc_data", "file_nonce", "created_at"}
+    ),
+    "rag_sources": frozenset({"source_id", "name", "sha256", "size_bytes", "created_at"}),
+    "rag_sections": frozenset({"row_id", "source_id", "seq", "enc_text", "text_nonce"}),
+    "rag_vectors": frozenset({"row_id", "model", "dim", "vector"}),
 }
 
 
@@ -330,6 +366,196 @@ class Store:
             }
             for row in rows
         }
+
+    # -- M7 durable tasks (§13.9; Content only ever as ciphertext) ----------
+
+    def create_task(
+        self,
+        task_id: str,
+        device_id: str,
+        task_type: str,
+        enc_input: bytes,
+        input_nonce: bytes,
+        enc_options: bytes | None,
+        options_nonce: bytes | None,
+        created_at: int,
+    ) -> None:
+        """Task definition is stored ENCRYPTED (Content at rest, §13.9 +
+        ADR-011 canary rule: prompts must never appear in plaintext on disk)."""
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO tasks (task_id, device_id, type, status, progress, "
+                "enc_input, input_nonce, enc_options, options_nonce, created_at) "
+                "VALUES (?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?)",
+                (
+                    task_id,
+                    device_id,
+                    task_type,
+                    enc_input,
+                    input_nonce,
+                    enc_options,
+                    options_nonce,
+                    created_at,
+                ),
+            )
+
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        return dict(row) if row is not None else None
+
+    def set_task_status(
+        self,
+        task_id: str,
+        status: str,
+        *,
+        progress: int | None = None,
+        started_at: int | None = None,
+    ) -> bool:
+        if status not in {"queued", "running", "succeeded", "failed", "cancelled"}:
+            raise StoreError(f"unknown task status: {status!r}")
+        with self._lock, self._conn:
+            sets = ["status = ?"]
+            params: list[Any] = [status]
+            if progress is not None:
+                sets.append("progress = ?")
+                params.append(progress)
+            if started_at is not None:
+                sets.append("started_at = ?")
+                params.append(started_at)
+            params.append(task_id)
+            cursor = self._conn.execute(
+                f"UPDATE tasks SET {', '.join(sets)} WHERE task_id = ?", params
+            )
+        return cursor.rowcount > 0
+
+    def set_task_progress(self, task_id: str, progress: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE tasks SET progress = ? WHERE task_id = ?", (progress, task_id)
+            )
+
+    def finish_task(
+        self,
+        task_id: str,
+        status: str,
+        finished_at: int,
+        expires_at: int,
+        *,
+        enc_result: bytes | None = None,
+        result_nonce: bytes | None = None,
+        error_code: str | None = None,
+        error_text: str | None = None,
+    ) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE tasks SET status = ?, finished_at = ?, expires_at = ?, "
+                "enc_result = ?, result_nonce = ?, error_code = ?, error_text = ?, "
+                "progress = 100 WHERE task_id = ?",
+                (
+                    status,
+                    finished_at,
+                    expires_at,
+                    enc_result,
+                    result_nonce,
+                    error_code,
+                    error_text,
+                    task_id,
+                ),
+            )
+
+    def delete_task(self, task_id: str) -> bool:
+        """Fetch-ack / explicit delete (§13.9); files cascade (FK)."""
+        with self._lock, self._conn:
+            cursor = self._conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+        return cursor.rowcount > 0
+
+    def purge_expired_tasks(self, now: int) -> int:
+        """§13.9 retention sweep: drop tasks past expires_at (files cascade)."""
+        with self._lock, self._conn:
+            cursor = self._conn.execute("DELETE FROM tasks WHERE expires_at < ?", (now,))
+        return cursor.rowcount
+
+    def put_task_file(
+        self,
+        task_id: str,
+        name: str,
+        size_bytes: int,
+        enc_data: bytes,
+        file_nonce: bytes,
+        created_at: int,
+    ) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO task_files "
+                "(task_id, name, size_bytes, enc_data, file_nonce, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (task_id, name, size_bytes, enc_data, file_nonce, created_at),
+            )
+
+    def list_task_files(self, task_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT task_id, name, size_bytes, enc_data, file_nonce, created_at "
+                "FROM task_files WHERE task_id = ? ORDER BY name",
+                (task_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # -- M7 local RAG (FR-MM-03; §13.9 doc_qa) ------------------------------
+
+    def insert_rag_source(
+        self, source_id: str, name: str, sha256: bytes, size_bytes: int, created_at: int
+    ) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO rag_sources "
+                "(source_id, name, sha256, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)",
+                (source_id, name, sha256, size_bytes, created_at),
+            )
+
+    def insert_rag_section(
+        self, source_id: str, seq: int, enc_text: bytes, text_nonce: bytes
+    ) -> int:
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                "INSERT INTO rag_sections "
+                "(source_id, seq, enc_text, text_nonce) VALUES (?, ?, ?, ?)",
+                (source_id, seq, enc_text, text_nonce),
+            )
+            return int(cursor.lastrowid)
+
+    def insert_rag_vector(self, row_id: int, model: str, dim: int, vector: bytes) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO rag_vectors "
+                "(row_id, model, dim, vector) VALUES (?, ?, ?, ?)",
+                (row_id, model, dim, vector),
+            )
+
+    def list_rag_vectors(self) -> list[dict[str, Any]]:
+        """All vectors with their ciphertext sections (retrieval is in-process;
+        v1 scale is a household — a full scan is the honest, simple plan)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT v.row_id, v.model, v.dim, v.vector, "
+                "s.source_id, s.seq, s.enc_text, s.text_nonce "
+                "FROM rag_vectors v JOIN rag_sections s ON s.row_id = v.row_id"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_rag_sources(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source_id, name, sha256, size_bytes, created_at "
+                "FROM rag_sources ORDER BY created_at"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_rag_source(self, source_id: str) -> bool:
+        with self._lock, self._conn:
+            cursor = self._conn.execute("DELETE FROM rag_sources WHERE source_id = ?", (source_id,))
+        return cursor.rowcount > 0
 
     # -- retention (§14.1) -------------------------------------------------------
 

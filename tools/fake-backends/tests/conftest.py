@@ -16,8 +16,9 @@ import pytest
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS_DIR))
 
-from fake_lmstudio import FakeLMStudio  # noqa: E402
-from fake_ollama import FakeOllama  # noqa: E402
+from fake_lmstudio import FakeLMStudio
+from fake_ollama import FakeOllama
+from fake_whisper import FakeWhisper
 
 
 @pytest.fixture()
@@ -43,6 +44,23 @@ def make_ollama() -> Callable[..., FakeOllama]:
 
     def _make(**kwargs: Any) -> FakeOllama:
         server = FakeOllama(("127.0.0.1", 0), **kwargs)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        servers.append(server)
+        return server
+
+    yield _make
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture()
+def make_whisper() -> Callable[..., FakeWhisper]:
+    servers: list[FakeWhisper] = []
+
+    def _make(**kwargs: Any) -> FakeWhisper:
+        server = FakeWhisper(("127.0.0.1", 0), **kwargs)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         servers.append(server)
