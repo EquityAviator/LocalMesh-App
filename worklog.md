@@ -427,3 +427,32 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：修 3 个�
 3. QUESTION-106（新）：unload 响应体状态；ADR-018（新）：nvidia-ml-py 审批；QUESTION-103 剩余 wire-format items 1-2 + operator 路由命名；QUESTION-104 等 tailscale 采集；QUESTION-105 dev token 豁免。
 4. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale，阻塞 contract tests 硬门）、ADR-017/018 审批、QUESTION-101..106。
 5. 沙箱注：本沙箱会在会间把 HEAD 切回 main，本轮提交直接落在 main；`agent/.venv` 与新锁文件已同步（nvidia-ml-py 13.615.71）。
+
+---
+Task ID: 17 — webDevReview round 8 (1 QA fix + 3 spec-anchored hardening items + dashboard round-8, sandbox)
+Agent: Z.ai Code (main agent)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：修 228 个弃用警告 + TC-SEC-10/CI-21/§19.1 三项加固 + 仪表盘新面板）。
+
+项目状态判断:
+- QA round 8 全绿后开发：pytest 301 passed + 3 announced skips、agent-browser 桌面 1280 + 移动 390（无横向溢出）、console 零错误、dev.log 全 200、过滤 chips/行展开/Refresh 交互正常。项目处于 Agent 侧 M2–M5 完结后的加固期。
+- QA 期间发现的唯一真实问题：**全量 pytest 输出 228 个 DeprecationWarning**，全部源自 app.py 的 `@app.on_event("startup"/"shutdown")`（FastAPI ≥0.103 弃用；每个 TestClient 建两处注册 → 全套件放大）。
+
+本轮完成 (commits: agent 加固 + fcacafc dashboard，均落 main):
+1. **App 生命周期迁移（修复）**：app.py 的 §10.6 startup/shutdown 改为单一 FastAPI **lifespan** handler（`@asynccontextmanager`，闭包捕获工厂局部服务，注册于 `FastAPI(lifespan=...)`；shutdown 严格逆序）。app.state 全部键保持不变（集成测试 `app.state.*` 零改动，`app.router.lifespan_context` 用法继续成立）。新增 tests/unit/test_app_lifespan.py 钉住：工厂构建期 DeprecationWarning ⇒ error（fail-closed）。结果：**套件警告 228 → 0**。
+2. **TC-SEC-10 pytest 化（§17.13/§17.3）**：`build_tls13_server_context` 落位 security/tls.py（§10.1 归属，CLI 委托之——生产 context 与被测 context 同源）；tests/security/test_tc_sec_10_tls13.py 用**真实 TLS 握手**：TLS 1.3 客户端协商 TLSv1.3 + 三大 1.3 cipher 之一；TLS 1.2-only 客户端双侧 fail-closed 拒绝（服务器线程 bounded-wait 防竞态，3 次复跑稳定）；`minimum_version` 钉在 TLSv1_3。tests/security/README.md 矩阵更新：10 条中 6 条 delivered。
+3. **CI-21 e2e 链（§21.4 × §16.5 × §13.7）**：tests/integration/test_ci21_keepwarm_chain.py 三条——冷路径 chat 在 mesh.meta 时刻钉住 `model_state="unloaded"`（meta 先于 demand-load 发出，CI-21 问题陈述上线）且生成仍完成；保温路径（override + 活跃设备 + 一轮 §16.5 tick + registry.refresh）后同 chat 发 `model_state="loaded"`（fake /api/ps → §10.3 状态推导，零编造）；基线：DEFAULT_IN_MEMORY 模型免保温读 loaded。
+4. **§19.1 benchmark 骨架**：scripts/bench_agent_latency.py（§21.1 scripts/=dev helpers，不动 monorepo 布局）——经真实 ASGI app + fake Ollama 测客户端观测 TTFT/chunk 间隔 p50/p95/max/mean，对比 §19.1 逐字预算；输出明示 "sandbox-relative, NOT Agent-added" + 进程内 transport 会合并流 chunk 的已知局限；诚实数字等真实 Backends（CAPTURE.md owner action）。已实跑验证（20 iterations + JSON 输出）。
+5. **仪表盘 round-8（fcacafc）**：新面板 "Performance budgets (§19.1)"（8 行逐字 target + [DESIGN]/[SRC] basis + 诚实测量状态 chips + harness 注脚）；Mesh API surface 12 行全部可**点击展开**（request body / §13.8 rate-limit / response codes chips，AnimatePresence + aria-expanded/controls）；planned WP 行新增 "blocked · <原因>" chip（不再藏在展开里）；"Delivered this round" 改为数据驱动 data.round（替换遗留 WP-14 硬编码陈旧文案）；Next-steps 标题更新为 §22.2 措辞；status JSON 更新（4 条新 gate 行、TC-SEC-10 → delivered、304 collected、nextSteps 重写）。
+6. **移动端溢出修复（本轮 QA 抓到的回归）**：新 §19.1 chip（shadcn Badge 自带 whitespace-nowrap+shrink-0）在 390px 把 scrollWidth 撑到 429——chip 改 whitespace-normal/break-words/shrink，行改始终 flex-wrap（metric 独占一行 sm:w-auto sm:flex-1）；复测 390=390（含展开态）。
+
+验证结果:
+- main = fcacafc（agent 加固 commit + dashboard fcacafc）。gate 全绿：ruff check/format PASS（91 files）、mypy --strict PASS（CI scope 15 files）、pytest **301 passed + 3 announced skips、0 warnings**、fake backends 31/31、四层 pytest_layer（repo root 调用）228 unit / 3 announced skips / 62 integration / 11 security 全绿、import-linter 3/3 KEPT、OpenAPI drift OK（12 paths）、3 security scans PASS、bun lint clean、agent-browser 桌面 1280 + 移动 390 + 新面板/展开/过滤复验通过（console 零错误、390px 无横向溢出）。
+- 基准骨架实跑样本（sandbox-relative）：TTFT p50≈57ms / p95≈58ms（含 fake 后端自身行为；进程内 transport 合并 chunk → per-chunk gaps ≈0，已如实标注）。
+
+未解决问题/风险，下一阶段建议:
+1. **沙箱可做候选**：TC-SEC-05 unauth fuzz harness（Agent 侧端点可重复条目）；全 src mypy --strict 范围决策（2.4.0 在 CI 范围外报 26 处——owner call）；CI-17..20 流鲁棒性条目（proxy 缓冲/断流）。均未开工。
+2. **pytest_layer.sh 调用姿势**：必须在 **repo root** 调用（脚本从 CWD 解析 `agent/.venv`）；在 agent/ 目录内调用会静默回退到 PATH 全局 venv 的 pytest → test_mdns 6 errors（本轮实测踩坑，脚本 docstring 已有说明，勿改脚本）。
+3. QUESTION-105/106、QUESTION-103 wire-format items 1-2 + operator 路由命名、QUESTION-104 等 tailscale 采集；ADR-017/018 待 owner 审批。
+4. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale，硬门）、真实 LAN/GPU/Android 环境验证（mDNS 多播、NvmlGpuProbe 真实 GPU、§19.1 Agent-added 数字、WP-09/10/12/13 App 侧）。
+5. WP-16+ 按 §22.2 "M6–M9 packages are defined when each milestone starts" 等 owner 重规划。
+6. 沙箱注：HEAD 会间会被切回 main，本轮提交直接落 main；`agent/.venv` 已同步。
