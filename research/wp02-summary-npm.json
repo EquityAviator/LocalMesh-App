@@ -1,0 +1,82 @@
+{
+  "react-native-zeroconf": {
+    "latest": "0.17.3",
+    "license": "MIT",
+    "published_at": "2026-10-04T01:10:47.518Z",
+    "modified": "2026-10-04T02:05:17.616Z",
+    "deprecated": null,
+    "peerDeps": {
+      "react": "*",
+      "react-native": ">=0.60"
+    },
+    "repo": "git://github.com/Apercu/react-native-zeroconf.git",
+    "description": "A Zeroconf discovery utility for react-native"
+  },
+  "react-native-sse": {
+    "latest": "1.2.1",
+    "license": "MIT",
+    "published_at": "2024-03-05T10:37:27.135Z",
+    "modified": "2024-03-05T10:37:27.604Z",
+    "deprecated": null,
+    "peerDeps": null,
+    "repo": "git+https://github.com/binaryminds/react-native-sse.git",
+    "description": "EventSource implementation for React Native. Server-Sent Events (SSE) for iOS and Android."
+  },
+  "@op-engineering/op-sqlite": {
+    "latest": "18.2.5",
+    "license": "MIT",
+    "published_at": "2026-09-20T14:40:02.773Z",
+    "modified": "2026-09-20T14:40:03.089Z",
+    "deprecated": null,
+    "peerDeps": {
+      "react": "*",
+      "react-native": "*",
+      "@sqlite.org/sqlite-wasm": "*"
+    },
+    "repo": "git+https://github.com/OP-Engineering/op-sqlite.git",
+    "description": "Fastest SQLite for React Native (with node.js support)"
+  },
+  "react-native-quick-sqlite": {
+    "latest": "8.2.7",
+    "license": "MIT",
+    "published_at": "2024-11-26T16:44:39.009Z",
+    "modified": "2026-10-01T10:10:27.661Z",
+    "deprecated": "Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.",
+    "peerDeps": {
+      "react": ">=17.0.0",
+      "react-native": ">=0.74.0"
+    },
+    "repo": "git+https://github.com/margelo/react-native-quick-sqlite.git",
+    "description": "Fast SQLite for react-native"
+  },
+  "react-native-sqlcipher-storage": {
+    "latest": "0.0.3",
+    "license": "MIT",
+    "published_at": "2019-01-24T08:56:15.465Z",
+    "modified": "2022-05-14T22:14:01.887Z",
+    "deprecated": null,
+    "peerDeps": {
+      "react-native": ">=0.40.0"
+    },
+    "repo": "git+https://github.com/mlbz198/react-native-sqlcipher-storage.git",
+    "description": "SQLCipher bindings for React Native (Android & iOS)"
+  },
+  "expo": {
+    "latest": "57.0.26",
+    "license": "MIT",
+    "published_at": "2026-09-29T10:57:08.644Z",
+    "modified": "2026-10-03T13:25:06.393Z",
+    "deprecated": null,
+    "peerDeps": {
+      "react": "*",
+      "react-dom": "*",
+      "react-native": "*",
+      "react-native-web": "*",
+      "@expo/dom-webview": "*",
+      "@expo/metro-runtime": "*",
+      "react-native-webview": "*"
+    },
+    "repo": "git+https://github.com/expo/expo.git",
+    "description": "The Expo SDK"
+  }
+}
