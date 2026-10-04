@@ -168,3 +168,18 @@ Work Log:
 
 Stage Summary:
 - M1 (dev-insecure loopback core) implemented and verified within scope fence; real-backend contract coverage remains the standing M2 entry blocker (owner action: docs/fixtures/CAPTURE.md).
+
+---
+Task ID: 9 — User-visible dashboard (sandbox surface)
+Agent: Z.ai Code (main agent)
+Task: LocalMesh progress dashboard on `/` + live status API + browser verification.
+
+Work Log:
+- Boundary decision (documented): the Next.js app at the repo root is sandbox surface the user watches; the dashboard reads repo state ONE-WAY (curated snapshot in `src/data/localmesh-status.json` + live stats via fs/git in `/api/localmesh/status`). No LocalMesh Python code imports from the Next.js app — the worklog boundary rule stays intact.
+- Dashboard sections: header (LM-ARCH-001 ref, git HEAD badge, refresh), M0–M9 roadmap strip with progress, §22.2 WP table (WP-01..10 with req IDs + commits), §21.4 CI-equivalent gate panel (10 gates incl. announced-skip transparency), §24 open questions/owner actions (QUESTION-101, ADR-017, fixtures blocker, Q-08), live repo stats (LOC/files/tests via fs walk), M2 entry next-steps.
+- Styling: zinc/emerald/amber palette (no blue/indigo), responsive mobile→desktop, sticky footer (min-h-screen flex + mt-auto), framer-motion subtle reveals, shadcn components only.
+- eslint.config.mjs: flat-config global ignores for the LocalMesh monorepo (agent/.venv was being linted — moved ignores to a standalone {ignores} block; `agent/**` alone does not match dotdirs).
+- Verification (agent-browser): desktop 1280px + mobile 390px screenshots; all sections render with live data (hash cb008cc, 3,809 LOC / 52 files, 18 test files); Refresh re-fetches; zero console errors; footer sticks to content bottom on both viewports; dev.log shows clean 200s for `/` and `/api/localmesh/status`.
+
+Stage Summary:
+- User-visible progress surface live; `bun run lint` clean; committed 2fa76ae.
