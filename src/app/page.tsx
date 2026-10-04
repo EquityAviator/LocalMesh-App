@@ -19,9 +19,12 @@ import {
   GitBranch,
   GitCommitHorizontal,
   KeyRound,
+  Lock,
+  MonitorSmartphone,
   Network,
   Radio,
   ScanSearch,
+  Server,
   ShieldCheck,
   Sparkles,
   Stethoscope,
@@ -117,6 +120,32 @@ interface MeshApiSection {
   authNote: string;
   endpoints: MeshEndpoint[];
 }
+interface AdminEndpoint {
+  method: "GET" | "POST" | "PATCH" | "DELETE";
+  path: string;
+  auth: "admin";
+  named: "spec" | "design";
+  note: string;
+  responses?: string[];
+}
+interface AdminAlias {
+  alias: string;
+  primary: string;
+  note: string;
+}
+interface AdminMetric {
+  family: string;
+  type: string;
+  labels: string;
+  source: string;
+}
+interface AdminApiSection {
+  listener: string;
+  authNote: string;
+  endpoints: AdminEndpoint[];
+  aliases: AdminAlias[];
+  metrics: AdminMetric[];
+}
 interface PerfBudgetRow {
   metric: string;
   target: string;
@@ -160,6 +189,7 @@ interface StatusPayload {
   streamLifecycle?: StreamLifecycle;
   round?: Round;
   meshApi: MeshApiSection;
+  adminApi?: AdminApiSection;
   doctor: DoctorSection;
   live: {
     git: { hash: string; subject: string; date: string };
@@ -277,6 +307,8 @@ export default function Home() {
   const [wpFilter, setWpFilter] = useState<WpFilter>("all");
   const [expandedWp, setExpandedWp] = useState<string | null>(null);
   const [expandedApi, setExpandedApi] = useState<string | null>(null);
+  const [expandedAdmin, setExpandedAdmin] = useState<string | null>(null);
+  const [adminMetricsOpen, setAdminMetricsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedDoctor, setCopiedDoctor] = useState(false);
 
@@ -1406,6 +1438,261 @@ export default function Home() {
                 </CardContent>
               </Card>
             </motion.section>
+
+            {/* Admin API surface (§13.1 loopback · ADR-014) + §20.1 metrics */}
+            {data.adminApi && (
+              <motion.section
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.32 }}
+                aria-labelledby="admin-api-h"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-y-1">
+                  <h2
+                    id="admin-api-h"
+                    className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    <Server className="h-3.5 w-3.5" aria-hidden /> Admin API surface
+                    (§13.1 loopback · ADR-014)
+                  </h2>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {data.adminApi.endpoints.length} endpoints ·{" "}
+                    {data.adminApi.metrics.length} §20.1 metric families · click a
+                    row for detail
+                  </span>
+                </div>
+                <Card className="transition-shadow hover:shadow-md">
+                  <CardContent className="p-0">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dashed border-border bg-amber-500/[0.04] px-4 py-2.5">
+                      <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+                      <code className="font-mono text-[11px] text-foreground">
+                        {data.adminApi.listener}
+                      </code>
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-amber-500/40 bg-amber-500/10 text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400"
+                      >
+                        <MonitorSmartphone className="h-2.5 w-2.5" /> operator-only
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-foreground/30 bg-foreground/[0.04] font-mono text-[9px] text-foreground"
+                      >
+                        <KeyRound className="h-2.5 w-2.5" /> X-Admin-Token (§13.1 · T-11)
+                      </Badge>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {data.adminApi.endpoints.map((ep) => {
+                        const post = ep.method === "POST";
+                        const del = ep.method === "DELETE";
+                        const patch = ep.method === "PATCH";
+                        const rowKey = `${ep.method} ${ep.path}`;
+                        const adminExpanded = expandedAdmin === rowKey;
+                        const domId = `admin-detail-${rowKey.replace(/\W+/g, "-")}`;
+                        const hasDetail = Boolean(ep.responses?.length);
+                        return (
+                          <div key={rowKey}>
+                            <button
+                              type="button"
+                              aria-expanded={adminExpanded}
+                              aria-controls={domId}
+                              onClick={() =>
+                                setExpandedAdmin(adminExpanded ? null : rowKey)
+                              }
+                              className={`group flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:flex-nowrap ${
+                                adminExpanded ? "bg-muted/40" : ""
+                              }`}
+                            >
+                              <span
+                                className={`inline-flex w-16 shrink-0 justify-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide transition-transform group-hover:scale-[1.03] ${
+                                  patch
+                                    ? "border-violet-500/40 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                                    : post
+                                      ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                      : del
+                                        ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
+                                        : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                }`}
+                              >
+                                {ep.method}
+                              </span>
+                              <code className="shrink-0 font-mono text-xs text-foreground">
+                                {ep.path}
+                              </code>
+                              {ep.named === "spec" ? (
+                                <Badge className="hidden shrink-0 border-emerald-500/30 bg-emerald-500/10 text-[9px] text-emerald-600 dark:text-emerald-400 md:inline-flex">
+                                  <ShieldCheck className="h-2.5 w-2.5" /> spec-named
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="hidden shrink-0 text-[9px] text-muted-foreground md:inline-flex"
+                                >
+                                  [DESIGN] path
+                                </Badge>
+                              )}
+                              <span className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:truncate sm:ml-auto sm:max-w-[38%]">
+                                {ep.note}
+                              </span>
+                              {hasDetail && (
+                                <ChevronDown
+                                  aria-hidden
+                                  className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                                    adminExpanded ? "rotate-180" : ""
+                                  }`}
+                                />
+                              )}
+                            </button>
+                            <AnimatePresence initial={false}>
+                              {adminExpanded && hasDetail && (
+                                <motion.div
+                                  id={domId}
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: "easeOut" }}
+                                  className="overflow-hidden border-t border-dashed border-border/70 bg-muted/20"
+                                >
+                                  <div className="px-4 py-3">
+                                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                      responses
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {ep.responses?.map((r) => (
+                                        <span
+                                          key={r}
+                                          className="break-words rounded border bg-background px-1.5 py-0.5 font-mono text-[10px] text-foreground"
+                                        >
+                                          {r}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* §20.1 metrics families */}
+                    <div className="border-t border-border bg-muted/20">
+                      <button
+                        type="button"
+                        aria-expanded={adminMetricsOpen}
+                        aria-controls="admin-metrics-grid"
+                        onClick={() => setAdminMetricsOpen(!adminMetricsOpen)}
+                        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                      >
+                        <Gauge className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/90">
+                          §20.1 metric families · GET /admin/metrics
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 font-mono text-[9px] text-muted-foreground"
+                        >
+                          text/plain; version=0.0.4
+                        </Badge>
+                        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          {data.adminApi.metrics.length} families
+                          <ChevronDown
+                            aria-hidden
+                            className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                              adminMetricsOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </span>
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {adminMetricsOpen && (
+                          <motion.div
+                            id="admin-metrics-grid"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.22, ease: "easeOut" }}
+                            className="overflow-hidden"
+                          >
+                            <div className="grid grid-cols-1 gap-2 px-4 pb-3 md:grid-cols-2">
+                              {data.adminApi.metrics.map((m) => (
+                                <div
+                                  key={m.family}
+                                  className="min-w-0 rounded-md border bg-background px-2.5 py-2 transition-colors hover:border-violet-500/40"
+                                >
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <code className="font-mono text-[11px] font-semibold text-foreground">
+                                      {m.family}
+                                    </code>
+                                    <Badge
+                                      variant="outline"
+                                      className={`shrink-0 px-1 py-0 text-[9px] uppercase tracking-wider ${
+                                        m.type === "counter"
+                                          ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                                          : m.type === "histogram"
+                                            ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
+                                            : "border-amber-500/30 text-amber-600 dark:text-amber-400"
+                                      }`}
+                                    >
+                                      {m.type}
+                                    </Badge>
+                                    {m.labels !== "—" && (
+                                      <span className="font-mono text-[9px] text-muted-foreground">
+                                        {"{ "}
+                                        {m.labels}
+                                        {" }"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                                    {m.source}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {/* WP-08 alias table (QUESTION-103 item 4 resolved) */}
+                    <div className="border-t border-dashed border-border px-4 py-2.5">
+                      <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <Sparkles className="h-3 w-3 text-emerald-500" aria-hidden />
+                        WP-08 [DESIGN] aliases kept · spec-named routes now primary
+                        (QUESTION-103 item 4 resolved)
+                      </p>
+                      <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3">
+                        {data.adminApi.aliases.map((a) => (
+                          <div
+                            key={a.alias}
+                            className="min-w-0 rounded-md border bg-background px-2 py-1.5"
+                          >
+                            <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 font-mono text-[10px]">
+                              <span className="break-words text-amber-600 dark:text-amber-400">
+                                {a.alias}
+                              </span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="break-words text-emerald-600 dark:text-emerald-400">
+                                {a.primary}
+                              </span>
+                            </p>
+                            <p className="mt-0.5 text-[9px] text-muted-foreground">
+                              {a.note}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-dashed border-border px-4 py-2 text-[10px] leading-relaxed text-muted-foreground">
+                      {data.adminApi.authNote}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.section>
+            )}
 
             {/* Open questions */}
             <motion.section
