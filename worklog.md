@@ -312,3 +312,36 @@ Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 修复 
 4. Owner actions 不变：fixtures 采集（阻塞 contract tests 硬门）、ADR-017、QUESTION-101/102/103。
 5. mDNS/doctor 的 LAN 行为（多播可见性、CI-06/07 LAN 探测、防火墙规则）在真实局域网验证——沙箱多播未验证 [Not verified]。
 6. 注：本沙箱会在会话间把 HEAD 切回 main，本轮提交直接落在 main。
+
+---
+Task ID: 14 — webDevReview round 5 (WP-14 Tailnet probe, M4)
+Agent: Z.ai Code (cron webDevReview)
+Task: 状态判断 + agent-browser QA + 自选开发重点（本轮：QA 全绿无 bug → WP-14 Tailscale 探测适配器）。
+
+项目状态判断:
+- QA 全绿：dev server 200s；agent-browser 桌面 1280 + 移动 390 渲染正常、console 零错误、过滤 chips（planned=3）/行展开/Refresh 交互实测通过、/api/localmesh/status 200；Python 回归全绿。无 bug → 按上轮建议推进 M4：WP-14（Agent 侧）。
+
+本轮完成 (WP-14, commit a5ae930, 落 main；dashboard 为后续 commit):
+- `adapters/tailscale.py`（替换 M0 stub）：
+  - `TailscaleCliProbe` 实现 §10.2 `TailnetProbe` 端口：binary 缺失 → None（§10.2 "None if tailscale absent"）；timeout/nonzero exit/OSError/坏 JSON → state="unknown"（区分"缺失"与"在但读不懂"，doctor 语义沿用）；subprocess 走 asyncio.to_thread + §10.5 规定的 2s 超时；binary_resolver 可注入。
+  - `parse_tailscale_status_json`：total/防御式（§10.3 rule 2，永不 raise）；字段名按 §6.3 [ASSUMPTION]（BackendState/Self.TailscaleIPs/Self.DNSName）；IP 过滤到 100.64.0.0/10 CGNAT（§6.3 addressing）、IPv6 丢弃（§16.2/CI-25）、去重+上限防垃圾；DNSName 去尾点。
+  - `t2_endpoint_candidates`：§16.1 step-4 顺序（MagicDNS 名 → 100.x IP），仅 running 状态产出（§17.4 QR `[&ep=…]`、§18.5 playbook 2 "QR carries Tailnet name/IP if detected"）。
+- `security/pairing.py`：PairingService 新增 `tailnet: TailnetInfo | None` + `listen_port` 字段；`status()` 的 `endpoints.tailnet` 从硬编码 null 升级为 §13.2 形状 `{dns, ips}|null`（running 且有可用地址才非 null，绝不填默认值）；QR ep 列表 LAN 在前 + T2 候选在后。
+- `app.py`：startup（§10.6 step 7）探测 tailnet → 注入 app.state + pairing，作为 ready 报告的一部分；`tailscale_status` 日志事件仅用 allow-list 键（component/status），DNS/IP 不落日志（QUESTION-102 立场延续）；探测失败降级 None 绝不阻塞启动。
+- `doctor.py`：check 9 的默认探针委托共享 parser —— doctor 与在线 Agent 对真实安装的解读保证一致（§18.4/§22.3）；doctor 保留同步 subprocess（需在 Agent 未运行时独立工作）。
+- 测试 +29：unit 21（adapter：协议符合性/§10.5 2s 超时常量/assumed shape/防御退化参数化/CGNAT 过滤去重/探测语义/T2 顺序与门控）+ pairing 5（status block 三态 + QR ep 顺序 + 无 tailnet 时 QR 不含 T2）+ doctor 2（默认探针委托共享 parser/absent）+ integration 1（HTTP 全流程 tailnet block）。
+- Contract 测试：`tests/contract/test_tailscale_vs_fixtures.py` announced skip（§22.3 "Probe parse tests with recorded tailscale output"；Appendix G：UNVERIFIED → QUESTION-104 登记）。CAPTURE.md 新增 §3 tailscale 采集命令 + checklist 两条。
+- QUESTION-104 登记（docs/OPEN_QUESTIONS.md）：tailscale status --json 字段名未对真实安装验证（沙箱无 tailscale binary）；若真实 JSON 有差异 → 局部小 diff（parser + 测试向量），符合 §22.3 stop-and-ask 条件。
+- 仪表盘：WP-14 done (a5ae930)、M4 in-progress（3 active）、新增 "Tailnet probe (§6.3 · §18.6)" gate 行、pytest 242 collected、QUESTION-104 卡片、next steps → WP-15 /device、"Delivered this round" 文案更新；agent-browser 桌面+移动+行展开复验通过、console 零错误。
+
+验证结果:
+- merged main = <dashboard commit>（WP-14 a5ae930 + dashboard）。gate 全绿：ruff/format PASS、mypy --strict PASS（14 files）、pytest 239 passed + 3 announced skips、import-linter 3/3 KEPT、OpenAPI drift OK、3 security scans PASS、fake backends 27/27、bun lint clean。
+
+未解决问题/风险，下一阶段建议:
+1. QUESTION-104（新）：tailscale JSON 字段名 [ASSUMPTION §6.3] 等 owner 采集确认——CAPTURE.md §3；contract test 随 fixtures 落地自动翻硬门。
+2. QUESTION-103 剩余 OPEN 项：wire-format items 1-2 + operator 路由命名。
+3. WP-09/WP-10/WP-12(App)/WP-13(App) 需 Android/Gradle 环境 → M2-M4 的 App 侧收尾依赖 owner 环境；Agent 侧 M2/M3/M4 已完整。
+4. 下一沙箱增量建议 = WP-15（M5, §13.2 API-DEV-01）：HardwareProbe 端口（psutil/pynvml 已 lockfile）+ `/device` 端点——tailnet block 已通过 app.state 预铺好管线（network.tailnet 形状 §13.2 已定），沙箱可完整实现+测试（探针可注入）。
+5. Owner actions 不变：fixtures 采集（LM Studio/Ollama/tailscale 三类）、ADR-017、QUESTION-101/102/103/104。
+6. tailscale 实机行为（CLI 输出形状、DERP path 字段 CI-16）待真实安装验证 [Not verified]。
+7. 注：本沙箱会在会间把 HEAD 切回 main，本轮提交直接落在 main。
