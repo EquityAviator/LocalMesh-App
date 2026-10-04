@@ -164,9 +164,7 @@ def warn_schema_drift(backend_id: str, endpoint: str) -> None:
     """Log a schema-drift warning — Metadata only, never Content (§10.3 rule 2)."""
     log.warning(
         "backend_schema_drift",
-        backend_id=backend_id,
-        status=endpoint,
-        error_code="BACKEND_SCHEMA_DRIFT",
+        extra={"backend_id": backend_id, "status": endpoint, "error_code": "BACKEND_SCHEMA_DRIFT"},
     )
 
 
@@ -348,12 +346,29 @@ class OpenAICompatBackend:
             json=body,
             headers=self._headers("text/event-stream"),
         )
+        # §13.7: cancel must abort the upstream request ≤ 1 s — including
+        # during the pre-first-byte phase (connect/cold model load), so the
+        # send itself is raced against the cancel token.
+        send_task = asyncio.ensure_future(self._client.send(request, stream=True))
+        token_task = asyncio.ensure_future(cancel.wait())
+        done, _ = await asyncio.wait(
+            {send_task, token_task},
+            timeout=self._first_token_timeout_s + 5.0,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if send_task not in done:
+            send_task.cancel()
+            raise MeshError("CANCELLED", "Cancelled while awaiting the Backend.")
+        token_task.cancel()
         try:
-            response = await self._client.send(request, stream=True)
+            response = send_task.result()
         except httpx.TimeoutException as exc:
             raise MeshError("BACKEND_TIMEOUT", "No response from Backend in time.") from exc
         except httpx.HTTPError as exc:
             raise MeshError("BACKEND_UNAVAILABLE", "Backend transport failed.") from exc
+        if cancel.cancelled:
+            await response.aclose()
+            raise MeshError("CANCELLED", "Cancelled before completion.")
 
         if response.status_code != 200:
             await response.aclose()
@@ -371,28 +386,47 @@ class OpenAICompatBackend:
     async def _consume(
         self, response: httpx.Response, cancel: CancelToken
     ) -> AsyncIterator[ChatChunk]:
-        """SSE body -> ChatChunks; idle 60 s, total cap, [DONE] terminator."""
+        """SSE body -> ChatChunks; idle 60 s, total cap, [DONE] terminator,
+        cancel honoured even mid-read (§13.7: abort upstream ≤ 1 s)."""
         parser = SSEParser()
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._total_stream_cap_s
         saw_done = False
         raw = response.aiter_bytes()
         while not saw_done:
-            if cancel.cancelled:
-                raise MeshError("CANCELLED", "Cancelled before completion.")
             if loop.time() > deadline:
                 raise MeshError("DEADLINE_EXCEEDED", "Stream exceeded the total duration cap.")
+            # Race the next chunk against the cancel token so a cancel during
+            # a slow read aborts immediately (§13.7 ≤ 1 s, NFR-PERF-03 path).
+            chunk_task: asyncio.Task[bytes] = asyncio.ensure_future(raw.__anext__())
+            token_task = asyncio.ensure_future(cancel.wait())
+            done, _ = await asyncio.wait(
+                {chunk_task, token_task},
+                timeout=IDLE_CHUNK_TIMEOUT_S,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if chunk_task not in done:
+                chunk_task.cancel()
+                token_task.cancel()
+                if token_task in done:
+                    raise MeshError("CANCELLED", "Cancelled before completion.")
+                raise MeshError("BACKEND_TIMEOUT", "Idle gap between chunks exceeded.")
+            token_task.cancel()
+            if token_task in done and chunk_task.cancelled():
+                raise MeshError("CANCELLED", "Cancelled before completion.")
             try:
-                chunk = await asyncio.wait_for(raw.__anext__(), IDLE_CHUNK_TIMEOUT_S)
-            except TimeoutError as exc:
-                raise MeshError("BACKEND_TIMEOUT", "Idle gap between chunks exceeded.") from exc
+                chunk = chunk_task.result()
             except StopAsyncIteration:
                 break
+            except httpx.HTTPError as exc:
+                raise MeshError(
+                    "BACKEND_UNAVAILABLE", "Backend transport failed mid-stream."
+                ) from exc
             for event in parser.feed(chunk):
                 if event.data == "[DONE]":
                     saw_done = True
                     break
-                parsed = chunk_from_sse_data(event.data)
+                parsed = chunk_from_sse_data(event.data, self.id)
                 if parsed is not None:
                     yield parsed
         if not saw_done:

@@ -55,6 +55,26 @@ CAPABILITY_VALUES: tuple[str, ...] = (
 )
 
 
+def new_uuid7() -> str:
+    """RFC 9562 UUIDv7 (48-bit unix-ms timestamp + random) — §14.3 identifier
+    format (`ag_`/`dv_`/`rq_`/`tk_` prefixes are added by callers).
+
+    Python 3.12's `uuid` module has no uuid7; this minimal implementation
+    keeps the canonical format without adding a dependency (§1.2 rule 5).
+    """
+    import os
+    import struct
+    import time
+    import uuid as _uuid
+
+    unix_ms = int(time.time() * 1000) & 0xFFFFFFFFFFFF  # 48 bits
+    rand_a = int.from_bytes(os.urandom(2), "big") & 0x0FFF  # 12 bits
+    rand_b = int.from_bytes(os.urandom(8), "big") & 0x3FFFFFFFFFFFFFFF  # 62 bits
+    value = (unix_ms << 80) | (0x7 << 76) | (rand_a << 64) | (0b10 << 62) | rand_b
+    raw = struct.pack(">QQ", value >> 64, value & 0xFFFFFFFFFFFFFFFF)
+    return str(_uuid.UUID(bytes=raw))
+
+
 @dataclass(frozen=True)
 class Device:
     """A paired endpoint holding a device keypair (§3, §14.1 row mirror)."""

@@ -110,8 +110,10 @@ class CapabilityRegistry:
                 except Exception:  # noqa: BLE001 — adapter errors -> down path
                     log.warning(
                         "backend_list_models_failed",
-                        backend_id=backend.id,
-                        error_code="BACKEND_UNAVAILABLE",
+                        extra={
+                            "backend_id": backend.id,
+                            "error_code": "BACKEND_UNAVAILABLE",
+                        },
                     )
                     models = None
                 if models is not None:

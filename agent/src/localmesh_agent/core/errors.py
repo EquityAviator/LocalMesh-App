@@ -40,7 +40,13 @@ MESH_ERROR_CODES: dict[str, tuple[int, bool]] = {
 
 
 class MeshError(Exception):
-    """Agent error carrying an Appendix D code (§13.4 envelope on the wire)."""
+    """Agent error carrying an Appendix D code (§13.4 envelope on the wire).
+
+    `status_override` exists for the one case where §13.2 fixes an HTTP
+    status that the Appendix D table has no code for: API-REQ-01's 404 for
+    unknown/finished requests (the envelope still carries an Appendix D
+    code). Any new use must be documented as a [DESIGN] gap resolution.
+    """
 
     def __init__(
         self,
@@ -48,6 +54,7 @@ class MeshError(Exception):
         message: str,
         *,
         details: dict[str, Any] | None = None,
+        status_override: int | None = None,
     ) -> None:
         if code not in MESH_ERROR_CODES:
             raise ValueError(f"unknown MeshError code: {code!r} (Appendix D)")
@@ -55,9 +62,12 @@ class MeshError(Exception):
         self.code = code
         self.message = message  # never Content, never raw backend bodies (§13.4)
         self.details = details
+        self._status_override = status_override
 
     @property
     def http_status(self) -> int:
+        if self._status_override is not None:
+            return self._status_override
         return MESH_ERROR_CODES[self.code][0]
 
     @property

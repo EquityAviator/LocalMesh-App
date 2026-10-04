@@ -18,8 +18,17 @@ def test_layer_packages_import() -> None:
     from localmesh_agent import adapters, api, core, observability, security, store  # noqa: F401
 
 
-def test_cli_stub_runs() -> None:
-    """The M0 CLI stub reports scaffold status and exits 0 (no invented subcommands)."""
+def test_cli_main_runs() -> None:
+    """The CLI without a subcommand prints help and exits 0 (no invented
+    surface ahead of its milestone, §1.2)."""
     from localmesh_agent.cli import main
 
-    assert main() == 0
+    assert main([]) == 0
+
+
+def test_cli_milestone_subcommands_report() -> None:
+    """`pair`/`devices`/`revoke`/`doctor` report their milestone (§22.1)."""
+    from localmesh_agent.cli import main
+
+    assert main(["doctor"]) == 0
+    assert main(["pair"]) == 0
