@@ -271,7 +271,7 @@ private fun readPemCertificate(input: InputStream): Certificate {
 private fun readPkcs8Key(input: InputStream): java.security.PrivateKey {
     val pem = input.readBytes().decodeToString()
     val b64 = pem
-        .substringAfter("-----BEGIN PRIVATE KEY-----")
+        .substringAfter("-----BEGIN PRIVATE KEY-----")  // secrets-scan: allow(pem-private-key) PEM-header string literal used by the fixture parser; fixtures are generated locally at test time, no key material committed
         .substringBefore("-----END PRIVATE KEY-----")
         .filterNot { it == '\r' || it == '\n' || it == ' ' }
     val der = Base64.getMimeDecoder().decode(b64)

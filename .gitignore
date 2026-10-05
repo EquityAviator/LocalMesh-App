@@ -70,3 +70,14 @@ dist/
 *.db
 *.sqlite
 *.sqlite3
+
+# --- OSS repo hygiene (owner directive 2026-10-05: publish as open source) ---
+# Sandbox/agent working artifacts are not part of the published project.
+.env
+tool-results/
+.zscripts/
+research/
+upload/
+download/
+qa-*.png
+--width

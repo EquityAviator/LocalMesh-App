@@ -9,9 +9,14 @@ scan becomes active and fails on:
   - `cleartextTrafficPermitted="true"` in any network security config XML
     referenced by a manifest (`android:networkSecurityConfig`).
 
-The §17.9 debug-only exception (cleartext to `10.0.2.2`/`127.0.0.1` via a
-*debug-only* network_security_config) is enforced release-vs-debug from WP-09
-(M2) onwards; until then ANY cleartext permission is a violation.
+The §17.9 debug-only exception is enforced by source set (active since the
+Android project landed at M2/WP-09): manifests under a `src/debug/` variant
+directory are compiled ONLY into debug builds (Android source-set semantics),
+so cleartext there (e.g. Expo prebuild's Metro dev-server access) stays inside
+the §17.9 debug-only scope and is reported as an explicit notice. Any
+cleartext in a main/release source set remains a hard FAIL — SEC-N1 protects
+release artifacts, and SEC-N6 (no dev paths in release) is enforced
+downstream by scripts/release_gate.sh.
 
 Exit codes: 0 = pass (or vacuous pass), 1 = violations found.
 """
@@ -55,19 +60,33 @@ def main() -> int:
         return 0
 
     violations: list[str] = []
+    debug_allowances: list[str] = []
     for manifest in manifests:
         rel = manifest.relative_to(REPO_ROOT)
+        # §17.9 debug-only scope: a manifest under a `src/debug/` variant source
+        # set is never part of a release build, so cleartext there is a notice,
+        # not a violation (SEC-N1 still fails any main/release cleartext).
+        is_debug_only = re.search(r"(^|/)src/debug/", rel.as_posix()) is not None
         text = manifest.read_text(encoding="utf-8", errors="replace")
         if CLEARNETWORK_ATTR.search(text):
-            violations.append(f'{rel}: android:usesCleartextTraffic="true" (SEC-N1, §17.9)')
+            if is_debug_only:
+                debug_allowances.append(
+                    f'{rel}: android:usesCleartextTraffic="true" (debug-only source set, §17.9)'
+                )
+            else:
+                violations.append(f'{rel}: android:usesCleartextTraffic="true" (SEC-N1, §17.9)')
         for nsc_name in NSC_REFERENCE.findall(text):
             for nsc in find_nsc_files(nsc_name):
                 nsc_text = nsc.read_text(encoding="utf-8", errors="replace")
                 if NSC_CLEARNETWORK.search(nsc_text):
-                    violations.append(
-                        f'{nsc.relative_to(REPO_ROOT)}: cleartextTrafficPermitted="true" '
-                        f"(referenced by {rel}) (SEC-N1, §17.9)"
+                    entry = (
+                        f"{nsc.relative_to(REPO_ROOT)}: cleartextTrafficPermitted=\"true\" "
+                        f"(referenced by {rel})"
                     )
+                    if is_debug_only:
+                        debug_allowances.append(f"{entry} (debug-only source set, §17.9)")
+                    else:
+                        violations.append(f"{entry} (SEC-N1, §17.9)")
 
     if violations:
         print("FAIL: cleartext permission found (SEC-N1; outside §17.9 debug-only scope):")
@@ -75,7 +94,9 @@ def main() -> int:
             print(f"  - {v}")
         return 1
 
-    print(f"Cleartext manifest scan: OK ({len(manifests)} manifest(s) scanned, no cleartext)")
+    for a in debug_allowances:
+        print(f"NOTICE: debug-only cleartext allowed (§17.9): {a}")
+    print(f"Cleartext manifest scan: OK ({len(manifests)} manifest(s) scanned, no release cleartext)")
     return 0
 
 

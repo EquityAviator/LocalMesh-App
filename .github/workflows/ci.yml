@@ -96,19 +96,26 @@ jobs:
 
       - name: Security gate — npm audit (§17.11)
         run: |
-          if [ -f apps/mobile/package.json ]; then
-            echo "::error::apps/mobile JS project detected but npm audit wiring not implemented (§21.4)"; exit 1
-          else
-            echo "::notice::npm audit skipped: no apps/mobile/package.json yet"
-          fi
+          cd apps/mobile
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --audit-level=high
+
+      - name: Set up JDK 17 (Android toolchain, §21.2)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up bun (mobile JS deps)
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install mobile JS dependencies
+        working-directory: apps/mobile
+        run: bun install --frozen-lockfile
 
       - name: Build Android debug APK (§21.4)
-        run: |
-          if [ -d apps/mobile/android ] || compgen -G "apps/mobile/*.gradle*" > /dev/null; then
-            echo "::error::Android project detected but CI APK build wiring not implemented (§21.4)"; exit 1
-          else
-            echo "::notice::Android build skipped: no Android project yet (apps/mobile is an M0 placeholder)"
-          fi
+        working-directory: apps/mobile/android
+        run: ./gradlew --no-daemon assembleDebug
 
   release-gate:
     # M9 (§22.1, §21.4): "on tags: release build + release-gate scan (SEC-N6) +

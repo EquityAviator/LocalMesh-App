@@ -83,6 +83,11 @@ state; the final call is recorded here by the owner.
   copyleft choice would be simpler to reason about but reduces embedding
   freedom the spec's CON-03 note implies. `agent/pyproject.toml` intentionally
   still has NO `license` field; adding it is a one-line change once decided.
+  **→ RESOLVED (owner, 2026-10-05): Apache-2.0** — the recommendation above was
+  adopted when the owner directed publication as an open-source project.
+  `LICENSE` (full text), `agent/pyproject.toml` `license = "Apache-2.0"` and
+  `docs/THIRD-PARTY-NOTICES.md` (zeroconf LGPL obligations) landed in the same
+  change. Recorded in `docs/OPEN_QUESTIONS.md` QUESTION-108.
 - **Q-09 Distribution channel.** Spec default: sideload/F-Droid. Suggestion:
   keep sideload for v1.0 (zero fee, matches the spec default); Play Store
   ($25 one-time, owner cost) stays open as a later add-on and does not block

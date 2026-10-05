@@ -6,7 +6,11 @@ name = "localmesh-agent"
 version = "1.0.0rc1"
 description = "LocalMesh AI Desktop Agent — Mesh API service exposing local inference Backends (LM-ARCH-001)"
 requires-python = ">=3.12"
-# NOTE: no `license` field yet — project license is an open owner decision (Q-08).
+# Q-08 RESOLVED (owner, 2026-10-05): project license is Apache-2.0 (per the
+# M9 decision brief recommendation in docs/RELEASE.md — patent grant; the only
+# non-permissive dependency, zeroconf LGPL-2.1-or-later, is handled via
+# docs/THIRD-PARTY-NOTICES.md). Full text: LICENSE at the repository root.
+license = "Apache-2.0"
 dependencies = [
     # §21.2 technology baseline. Names only here: exact versions are pinned in
     # agent/requirements.txt, generated FROM THE REGISTRY at M0 (WP-02) and

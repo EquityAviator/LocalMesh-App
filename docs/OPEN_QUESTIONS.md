@@ -221,10 +221,18 @@ Seed numbering continues from the spec's own open questions (Q-01…Q-12, LM-ARC
   LGPL-2.1-or-later dependency, CON-03) and which Android distribution channel?
 - Context/evidence: decision brief with the evidence-cited facts and a
   recommendation recorded in `docs/RELEASE.md` § "M9 decision register";
-  `agent/pyproject.toml` deliberately ships WITHOUT a `license` field until the
+  `agent/pyproject.toml` deliberately shipped WITHOUT a `license` field until the
   owner decides. Go/Rust decision gate closed separately (ADR-021, Accepted).
 - Why we must not guess: a license choice is an owner legal act; the dev agent
   can only prepare the decision, not take it.
 - Default if unanswered: release candidate remains licensable as
   "all-rights-reserved until Q-08 lands"; tagging 1.0.0 final REQUIRES Q-08.
-- Status: OPEN (owner)
+- **Q-08 RESOLVED (owner, 2026-10-05): Apache-2.0.** Owner directive to publish
+  the project as open source ("adjust it accordingly as a whole open source
+  project"). Adopted the M9 decision brief's recommendation (permissive,
+  Apache-2.0 for the patent grant); zeroconf LGPL-2.1-or-later obligations
+  recorded in `docs/THIRD-PARTY-NOTICES.md`; full text at `LICENSE`;
+  `agent/pyproject.toml` now carries `license = "Apache-2.0"`.
+- Q-09 (distribution channel): still OPEN — spec default sideload/F-Droid
+  stands for v1.0; Play Store remains an optional later add-on (does not block
+  rc.1).
