@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/EquityAviator/LocalMesh-App/security/advisories/new
+    about: Private disclosure — never open a public issue for security problems (SEC-N3/N5).
+  - name: Architecture & requirements spec (LM-ARCH-001)
+    url: https://github.com/EquityAviator/LocalMesh-App/blob/main/docs/LocalMesh_AI_Architecture_and_Requirements.md
+    about: Read before proposing features — check non-goals (§4.4) and contracts (§13–15).
