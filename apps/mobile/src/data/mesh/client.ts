@@ -8,14 +8,22 @@
  * check inside the TLS stack).
  */
 
-import type { DeviceInfo } from '../../domain/entities';
+import type { DeviceInfo, PermState } from '../../domain/entities';
 import type {
   MeshCore,
   MeshCoreResponse,
   MeshCoreStreamRequest,
   MeshCoreRequest,
+  NetworkStateNative,
   StreamHandle,
 } from '../../../modules/mesh-core/src/MeshCore.types';
+import { MESH_DEMO_CONFIG, getMeshCoreForPlatform } from '../../infra/meshCore';
+
+export type { StreamHandle } from '../../../modules/mesh-core/src/MeshCore.types';
+
+/** Logical demo Agent origin + demo pin (re-exported for feature flows, §17.9). */
+export const DEMO_AGENT_BASE_URL = MESH_DEMO_CONFIG.logicalBase;
+export const DEMO_AGENT_PIN = MESH_DEMO_CONFIG.pin;
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 export const STREAM_IDLE_TIMEOUT_MS = 45_000;
@@ -79,12 +87,26 @@ export interface DeviceTokenResponse {
 
 export interface HealthReport {
   status?: string;
-  backends?: Record<string, unknown>;
+  uptime_s?: number;
+  backends?: Array<{ id?: string; status?: string } & Record<string, unknown>>;
+  queue?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
 export interface ModelListResponse {
-  models?: Array<{ id?: string; mesh_model_id?: string; display_name?: string; loaded?: boolean; capabilities?: string[]; [k: string]: unknown }>;
+  models?: Array<{
+    id?: string;
+    mesh_model_id?: string;
+    backend_model_id?: string;
+    display_name?: string | null;
+    /** §13.5 closed state vocabulary (loaded/unloaded/…); the App projects
+     * this onto the domain `loaded` boolean. */
+    state?: string;
+    loaded?: boolean;
+    /** §13.5: `{values: string[], source: string}` (additive-tolerant). */
+    capabilities?: { values?: string[] } | string[];
+    [k: string]: unknown;
+  }>;
   [k: string]: unknown;
 }
 
@@ -235,4 +257,40 @@ export class MeshApiClient {
     };
     return this.cfg.core.openStream(req);
   }
+}
+
+let demoClient: MeshApiClient | null = null;
+
+/**
+ * §11.3 gateway for screens: the ONLY way UI code reaches the transport.
+ * The web demo binds the client to the sandbox demo transport (logical base
+ * + demo pin, §17.9); the native pairing flow will construct per-Agent
+ * clients from the §14.2 row (base URL + stored pin) in a later WP.
+ */
+export function getMeshApiClient(): MeshApiClient {
+  if (!demoClient) {
+    demoClient = new MeshApiClient({
+      core: getMeshCoreForPlatform(),
+      baseUrl: MESH_DEMO_CONFIG.logicalBase,
+      pin: MESH_DEMO_CONFIG.pin,
+    });
+  }
+  return demoClient;
+}
+
+/**
+ * §11.2 transport probes for the §18.4 Doctor ladder (no API semantics —
+ * network/permission/package checks go straight to the platform transport).
+ */
+export function meshCoreProbes(): {
+  getNetworkState(): Promise<NetworkStateNative>;
+  getLocalNetworkPermission(): Promise<PermState>;
+  isPackageInstalled(pkg: string): Promise<boolean>;
+} {
+  const core = getMeshCoreForPlatform();
+  return {
+    getNetworkState: () => core.getNetworkState(),
+    getLocalNetworkPermission: () => core.getLocalNetworkPermission(),
+    isPackageInstalled: (pkg: string) => core.isPackageInstalled(pkg),
+  };
 }

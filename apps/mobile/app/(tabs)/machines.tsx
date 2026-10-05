@@ -1,10 +1,12 @@
-import React, { useCallback, useMemo } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Platform, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { MachineCard } from '../../src/ui/components';
 import { paletteFor } from '../../src/ui/theme';
 import { useThemeMode } from '../../src/ui/useThemeMode';
 import { buildMachineCard, sortCards, type MachineCardVM } from '../../src/features/machines/view';
+import { backendLine as liveBackendLine, modelLine as liveModelLine, refreshAgentData as refreshLive } from '../../src/features/machines/live';
+import { agentDataStore } from '../../src/state/agentDataStore';
 import { machinesStore } from '../../src/state/machinesStore';
 import { useStore } from '../../src/state/useStore';
 import type { PairedAgent } from '../../src/domain/entities';
@@ -13,24 +15,36 @@ import type { PairedAgent } from '../../src/domain/entities';
 export default function MachinesScreen(): React.ReactElement {
   const { mode } = useThemeMode();
   const palette = paletteFor(mode);
-  const { agents, conn, discovery } = useStore(machinesStore);
+  const { agents, conn } = useStore(machinesStore);
+  const agentData = useStore(agentDataStore);
+  const [refreshing, setRefreshing] = useState(false);
+  // Live data flows only where the demo transport exists (§17.9 web demo);
+  // native builds keep the pairing-driven flow.
+  const isWeb = Platform.OS === 'web';
+
+  useEffect(() => {
+    if (isWeb) void refreshLive();
+  }, [isWeb]);
 
   const refresh = useCallback(() => {
-    // Pull to refresh re-runs discovery (§6.3); the native events update the store.
-    void agents.length;
-    void discovery.length;
-  }, [agents.length, discovery.length]);
+    if (!isWeb) return;
+    setRefreshing(true);
+    void refreshLive().finally(() => setRefreshing(false));
+  }, [isWeb]);
 
   const cards: MachineCardVM[] = useMemo(() => {
-    const built = agents.map((a: PairedAgent) =>
-      buildMachineCard({
+    const built = agents.map((a: PairedAgent) => {
+      const live = agentData[a.agentId];
+      return buildMachineCard({
         agent: a,
         conn: conn[a.agentId] ?? { s: 'IDLE' },
+        hardwareLine: live ? liveBackendLine(live) : undefined,
+        modelLine: live ? liveModelLine(live) : undefined,
         now: Date.now(),
-      }),
-    );
+      });
+    });
     return sortCards(built, {});
-  }, [agents, conn]);
+  }, [agents, conn, agentData]);
 
   const onlineCount = cards.filter((c) => !c.dimmed).length;
 
@@ -68,7 +82,7 @@ export default function MachinesScreen(): React.ReactElement {
             Add machine
           </Link>
         }
-        refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={palette.textSecondary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.textSecondary} />}
       />
     </>
   );

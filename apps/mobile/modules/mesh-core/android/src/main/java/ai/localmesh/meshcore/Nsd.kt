@@ -215,9 +215,20 @@ class NsdDiscovery(
                 .filterIsInstance<Inet4Address>()
                 .mapNotNull { it.hostAddress }
         } else {
-            val single = info.hostAddress
-            if (single != null && !single.contains(':')) listOf(single) else emptyList()
+            // NsdServiceInfo.getHostAddress() is absent from API 34+ SDK stubs
+            // (removed, not deprecated) — resolve it reflectively on API < 34.
+            legacyHostAddress(info)?.takeIf { !it.contains(':') }?.let { listOf(it) }
+                ?: emptyList()
         }
+
+    /** Reflection fallback for NsdServiceInfo#getHostAddress (removed from API 34 stubs). */
+    private fun legacyHostAddress(info: NsdServiceInfo): String? = try {
+        @Suppress("DEPRECATION")
+        val m = NsdServiceInfo::class.java.getMethod("getHostAddress")
+        m.invoke(info) as? String
+    } catch (_: Exception) {
+        null
+    }
 
     private companion object {
         const val SERVICE_TYPE_V1 = "_localmesh._tcp"

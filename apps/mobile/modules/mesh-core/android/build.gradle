@@ -16,11 +16,19 @@ def safeExtGet = { name, fallback ->
 
 android {
     namespace 'ai.localmesh.meshcore'
-    compileSdk safeExtGet('compileSdk', 37)          // §6.4: Android 17 (targetSdk 37) local-network model
+    // §6.4 wants compileSdk 37 (Android 17 local-network model). The Kotlin
+    // sources deliberately use string permission constants + SDK_INT guards, so
+    // compiling against the app's compileSdk (RN 0.77 / AGP 8.8 ships 35) is
+    // behaviour-identical; AGP < 9 cannot register the minor-versioned
+    // "platforms;android-37" package. Owner machines with newer AGP can pin 37.
+    def _compileSdk = rootProject.ext.has('compileSdk')
+            ? rootProject.ext.get('compileSdk')
+            : (rootProject.ext.has('compileSdkVersion') ? rootProject.ext.get('compileSdkVersion') : 37)
+    compileSdk _compileSdk
 
     defaultConfig {
         minSdk safeExtGet('minSdkVersion', 29)
-        targetSdk safeExtGet('targetSdkVersion', 37) // §6.4: ACCESS_LOCAL_NETWORK runtime permission regime
+        targetSdk safeExtGet('targetSdkVersion', 37) // §6.4 runtime regime (string consts + SDK_INT guards)
         consumerProguardFiles 'consumer-rules.pro'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }

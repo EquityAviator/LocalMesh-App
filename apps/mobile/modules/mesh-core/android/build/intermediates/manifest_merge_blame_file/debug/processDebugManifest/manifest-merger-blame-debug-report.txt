@@ -1,0 +1,72 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<!--
+3  mesh-core module manifest (library). Merged into the app manifest by the manifest merger.
+4
+5  Permission policy (§6.4, §11.2, §17.8):
+6  - INTERNET: required by every network path in this module (PinnedHttp, SseStream).
+7  - ACCESS_NETWORK_STATE: required by NetMonitor's ConnectivityManager callbacks (getNetworkState /
+8    'networkChanged'). Both are normal, install-time permissions.
+9  - ACCESS_LOCAL_NETWORK (Android 17 / targetSdk 37): mandatory runtime permission for local-network
+10    traffic. Declared HERE (module level) as the safe default so the merged app manifest cannot
+11    silently omit it — without the declaration, an app targeting SDK 37 can never be granted local
+12    network access (§6.4). The RUNTIME request is deliberately NOT performed by this module
+13    automatically: it is surfaced through requestLocalNetworkPermission() and is only allowed when
+14    the app targets SDK 37 (§6.4: "Do not request ACCESS_LOCAL_NETWORK at runtime before targeting
+15    SDK 37").
+16  - NEARBY_WIFI_DEVICES (Android 16): the opt-in local-network protection path (§6.4). Declared with
+17    neverForLocation: this module derives no location signal from Wi-Fi (§17.10 spirit).
+18-->
+19<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+20    xmlns:tools="http://schemas.android.com/tools"
+21    package="ai.localmesh.meshcore" >
+22
+23    <uses-sdk android:minSdkVersion="24" />
+24
+25    <!-- Every network path in this module (§11.2 request/openStream) -->
+26    <uses-permission android:name="android.permission.INTERNET" />
+26-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:23:5-67
+26-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:23:22-64
+27
+28    <!-- NetMonitor: ConnectivityManager registerDefaultNetworkCallback / registerNetworkCallback -->
+29    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+29-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:26:5-79
+29-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:26:22-76
+30
+31    <!--
+32         §6.4: Android 17 (API 37) — mandatory, runtime-requested. Existence of this declaration is
+33         checked by Permissions.getLocalNetworkPermission(); see README "Permissions".
+34    -->
+35    <uses-permission
+35-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:30:5-31:45
+36        android:name="android.permission.ACCESS_LOCAL_NETWORK"
+36-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:30:22-76
+37        tools:targetApi="37" />
+37-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:31:22-42
+38
+39    <!--
+40         §6.4: Android 16 (API 36) — opt-in local-network protection via NEARBY_WIFI_DEVICES.
+41         neverForLocation: we do not derive location from Wi-Fi state.
+42    -->
+43    <uses-permission
+43-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:35:5-37:51
+44        android:name="android.permission.NEARBY_WIFI_DEVICES"
+44-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:35:22-75
+45        android:usesPermissionFlags="neverForLocation"
+45-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:36:22-68
+46        tools:targetApi="tiramisu" />
+46-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:37:22-48
+47
+48    <!--
+49         Package visibility (API 30+) for isPackageInstalled(). Deliberately scoped to the Tailscale
+50         hint only (§11.2: "used for Tailscale hint only"); the Kotlin side additionally allow-lists
+51         the package so the module can never become a generic package-enumeration oracle.
+52         NOT QUERY_ALL_PACKAGES (§17.8 App hardening).
+53    -->
+54    <queries>
+54-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:43:5-45:15
+55        <package android:name="com.tailscale.ipn" />
+55-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:44:9-53
+55-->/home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:44:18-50
+56    </queries>
+57
+58</manifest>

@@ -169,6 +169,12 @@ export class StreamMachine {
   /** Native socket closed before [DONE] → interrupted (§15.3). */
   onClosed(reason: string): void {
     if (this.finished) return;
+    if (reason === 'done') {
+      // Graceful close after the §13.7 [DONE] sentinel — a completed
+      // generation, not an interruption.
+      this.transition('complete', { note: 'closed' });
+      return;
+    }
     void reason;
     this.transition('interrupted', { note: 'closed' });
   }

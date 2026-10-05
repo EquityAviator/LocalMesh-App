@@ -6,7 +6,7 @@ import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import java.security.KeyFactory
-import java.security.KeyGenerator
+import javax.crypto.KeyGenerator
 import java.security.KeyStore
 import java.security.ProviderException
 import java.security.Signature
@@ -51,7 +51,7 @@ object DeviceKeys {
         // StrongBoxUnavailableException or (on some OEM keystores) as a generic ProviderException —
         // both fall back to the TEE spec below.
         try {
-            generator.initialize(strongBoxSpec(alias))
+            generator.init(strongBoxSpec(alias))
             generator.generateKey()
             generated = true
         } catch (e: StrongBoxUnavailableException) {
@@ -60,7 +60,7 @@ object DeviceKeys {
             generated = false
         }
         if (!generated) {
-            generator.initialize(teeSpec(alias))
+            generator.init(teeSpec(alias))
             generator.generateKey()
         }
 
@@ -143,20 +143,22 @@ object DeviceKeys {
      * layer surfaces this flag in the device list, and must not claim hardware backing it does
      * not have).
      */
-    private fun hardwareBackedOf(entry: KeyStore.PrivateKeyEntry): Boolean = try {
-        val publicKey = entry.certificate?.publicKey ?: return false
-        val factory = KeyFactory.getInstance(publicKey.algorithm, ANDROID_KEYSTORE)
-        val keyInfo = factory.getKeySpec(publicKey, KeyInfo::class.java)
-        if (Build.VERSION.SDK_INT >= 31) {
-            // getSecurityLevel() (API 31+) supersedes the deprecated isInsideSecureHardware.
-            val level = keyInfo.securityLevel
-            level == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT ||
-                level == KeyProperties.SECURITY_LEVEL_STRONGBOX
-        } else {
-            @Suppress("DEPRECATION")
-            keyInfo.isInsideSecureHardware
+    private fun hardwareBackedOf(entry: KeyStore.PrivateKeyEntry): Boolean {
+        return try {
+            val publicKey = entry.certificate?.publicKey ?: return false
+            val factory = KeyFactory.getInstance(publicKey.algorithm, ANDROID_KEYSTORE)
+            val keyInfo = factory.getKeySpec(publicKey, KeyInfo::class.java)
+            if (Build.VERSION.SDK_INT >= 31) {
+                // getSecurityLevel() (API 31+) supersedes the deprecated isInsideSecureHardware.
+                val level = keyInfo.securityLevel
+                level == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT ||
+                    level == KeyProperties.SECURITY_LEVEL_STRONGBOX
+            } else {
+                @Suppress("DEPRECATION")
+                keyInfo.isInsideSecureHardware
+            }
+        } catch (e: Exception) {
+            false
         }
-    } catch (e: Exception) {
-        false
     }
 }

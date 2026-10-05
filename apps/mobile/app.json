@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "LocalMesh",
+    "name": "Local Mesh AI",
     "slug": "localmesh",
     "scheme": "localmesh",
     "version": "1.0.0-rc.1",
@@ -13,12 +13,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.localmesh.mobile"
+      "bundleIdentifier": "ai.localmesh.app"
     },
     "android": {
-      "package": "app.localmesh.mobile",
+      "package": "ai.localmesh.app",
       "allowBackup": false,
-      "blockedPermissions": ["android.permission.INTERNET_BACKUP"],
+      "blockedPermissions": [
+        "android.permission.INTERNET_BACKUP"
+      ],
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
@@ -27,9 +29,16 @@
         "android.permission.RECORD_AUDIO"
       ]
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "experiments": {
-      "typedRoutes": false
+      "typedRoutes": false,
+      "baseUrl": "/virtual-device"
+    },
+    "web": {
+      "output": "single",
+      "bundler": "metro"
     }
   }
 }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  mesh-core module manifest (library). Merged into the app manifest by the manifest merger.
+
+  Permission policy (§6.4, §11.2, §17.8):
+  - INTERNET: required by every network path in this module (PinnedHttp, SseStream).
+  - ACCESS_NETWORK_STATE: required by NetMonitor's ConnectivityManager callbacks (getNetworkState /
+    'networkChanged'). Both are normal, install-time permissions.
+  - ACCESS_LOCAL_NETWORK (Android 17 / targetSdk 37): mandatory runtime permission for local-network
+    traffic. Declared HERE (module level) as the safe default so the merged app manifest cannot
+    silently omit it — without the declaration, an app targeting SDK 37 can never be granted local
+    network access (§6.4). The RUNTIME request is deliberately NOT performed by this module
+    automatically: it is surfaced through requestLocalNetworkPermission() and is only allowed when
+    the app targets SDK 37 (§6.4: "Do not request ACCESS_LOCAL_NETWORK at runtime before targeting
+    SDK 37").
+  - NEARBY_WIFI_DEVICES (Android 16): the opt-in local-network protection path (§6.4). Declared with
+    neverForLocation: this module derives no location signal from Wi-Fi (§17.10 spirit).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="ai.localmesh.meshcore" >
+
+    <uses-sdk android:minSdkVersion="24" />
+
+    <!-- Every network path in this module (§11.2 request/openStream) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- NetMonitor: ConnectivityManager registerDefaultNetworkCallback / registerNetworkCallback -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+         §6.4: Android 17 (API 37) — mandatory, runtime-requested. Existence of this declaration is
+         checked by Permissions.getLocalNetworkPermission(); see README "Permissions".
+    -->
+    <uses-permission
+        android:name="android.permission.ACCESS_LOCAL_NETWORK"
+        tools:targetApi="37" />
+
+    <!--
+         §6.4: Android 16 (API 36) — opt-in local-network protection via NEARBY_WIFI_DEVICES.
+         neverForLocation: we do not derive location from Wi-Fi state.
+    -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="tiramisu" />
+
+    <!--
+         Package visibility (API 30+) for isPackageInstalled(). Deliberately scoped to the Tailscale
+         hint only (§11.2: "used for Tailscale hint only"); the Kotlin side additionally allow-lists
+         the package so the module can never become a generic package-enumeration oracle.
+         NOT QUERY_ALL_PACKAGES (§17.8 App hardening).
+    -->
+    <queries>
+        <package android:name="com.tailscale.ipn" />
+    </queries>
+
+</manifest>

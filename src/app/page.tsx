@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { VirtualDevicePanel } from "@/components/dashboard/virtual-device-panel";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -1990,6 +1991,9 @@ export default function Home() {
                 </div>
               </motion.section>
             )}
+
+            {/* Virtual device — the real app live via react-native-web + demo bridge */}
+            <VirtualDevicePanel />
 
             {/* Open questions */}
             <motion.section

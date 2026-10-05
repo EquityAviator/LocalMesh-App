@@ -3,6 +3,8 @@ package ai.localmesh.meshcore
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import expo.modules.interfaces.permissions.PermissionsResponseListener
+import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -169,7 +171,7 @@ class MeshCoreModule : Module() {
         Function("startDiscovery") { serviceType: String, promise: Promise ->
             val discovery = nsd
             if (discovery == null) {
-                promise.reject("NSD_ERROR", "module not initialized")
+                promise.reject("NSD_ERROR", "module not initialized", null)
             } else {
                 mainHandler.post {
                     discovery.start(serviceType) { error ->
@@ -204,7 +206,7 @@ class MeshCoreModule : Module() {
         Function("getLocalNetworkPermission") { promise: Promise ->
             val context = appContext?.reactContext
             if (context == null) {
-                promise.reject("PERMISSION_REQUIRED", "no application context")
+                promise.reject("PERMISSION_REQUIRED", "no application context", null)
             } else {
                 promise.resolve(LocalNetworkPermissions.getLocalNetworkPermission(context))
             }
@@ -213,7 +215,7 @@ class MeshCoreModule : Module() {
         Function("requestLocalNetworkPermission") { promise: Promise ->
             val context = appContext?.reactContext
             if (context == null) {
-                promise.reject("PERMISSION_REQUIRED", "no application context")
+                promise.reject("PERMISSION_REQUIRED", "no application context", null)
                 return@Function
             }
             // §6.4: never request ACCESS_LOCAL_NETWORK before targetSdk 37 — resolve immediately;
@@ -224,19 +226,25 @@ class MeshCoreModule : Module() {
             }
             val permissions = appContext?.permissions
             if (permissions == null) {
-                promise.reject("PERMISSION_REQUIRED", "permissions API unavailable")
+                promise.reject("PERMISSION_REQUIRED", "permissions API unavailable", null)
                 return@Function
             }
-            permissions.requestPermission(LocalNetworkPermissions.ACCESS_LOCAL_NETWORK) { granted ->
-                promise.resolve(if (granted) "granted" else "denied")
-            }
+            permissions.askForPermissions(
+                PermissionsResponseListener { result ->
+                    val response = result[LocalNetworkPermissions.ACCESS_LOCAL_NETWORK]
+                    promise.resolve(
+                        if (response?.status == PermissionsStatus.GRANTED) "granted" else "denied"
+                    )
+                },
+                LocalNetworkPermissions.ACCESS_LOCAL_NETWORK,
+            )
         }
 
         // §11.2: "used for Tailscale hint only" — allow-listed in LocalNetworkPermissions.
         Function("isPackageInstalled") { pkg: String, promise: Promise ->
             val context = appContext?.reactContext
             if (context == null) {
-                promise.reject("PERMISSION_REQUIRED", "no application context")
+                promise.reject("PERMISSION_REQUIRED", "no application context", null)
             } else {
                 promise.resolve(LocalNetworkPermissions.isPackageInstalled(context, pkg))
             }

@@ -226,14 +226,6 @@ function tierRank(t: Tier): number {
   return { T0: 0, T1: 1, T2: 2, T3: 3 }[t];
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return '';
-  }
-}
-
 function defaultPortFrom(endpoints: readonly Endpoint[]): number | null {
   for (const e of endpoints) {
     try {
@@ -295,7 +287,6 @@ export async function runRace(candidates: readonly PlannedCandidate[], opts: Rac
   const preemptGraceMs = opts.preemptGraceMs ?? PREEMPT_GRACE_MS;
   const overallDeadlineMs = opts.overallDeadlineMs ?? OVERALL_DEADLINE_MS;
   const clock = opts.clock;
-  const t0 = clock.now();
 
   const slots: ProbeSlot[] = candidates.map((candidate, index) => ({
     index,

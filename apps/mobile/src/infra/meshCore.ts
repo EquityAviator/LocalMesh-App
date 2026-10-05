@@ -8,6 +8,7 @@
  * Screens never import this file — only src/data/mesh/client.ts does (§11.3).
  */
 
+import { Platform } from 'react-native';
 import type {
   MeshCore,
   MeshCoreRequest,
@@ -15,11 +16,40 @@ import type {
   MeshCoreStreamRequest,
   NetworkStateNative,
   StreamHandle,
-} from '../modules/mesh-core/src/MeshCore.types';
+} from '../../modules/mesh-core/src/MeshCore.types';
+import { WebMeshCore } from './webMeshCore';
 
-export type { MeshCore } from '../modules/mesh-core/src/MeshCore.types';
+export type { MeshCore } from '../../modules/mesh-core/src/MeshCore.types';
 
 let cached: MeshCore | null = null;
+
+/**
+ * Sandbox web-demo transport configuration (§17.9 dev-only loopback mode):
+ * logical Agent URLs are mapped by WebMeshCore onto the same-origin proxy
+ * route `/api/localmesh/demo/*` which forwards to the real Agent. Production
+ * builds never use this — native goes through PinnedHttp TLS pinning (§17.3).
+ */
+export const MESH_DEMO_CONFIG = {
+  proxyBase: '/api/localmesh/demo',
+  logicalBase: 'https://demo.agent.local',
+  pin: 'demo-pin-loopback',
+} as const;
+
+let webCached: MeshCore | null = null;
+
+/**
+ * §11.2 transport for the current platform: web bundles have no native
+ * module, so they get the fetch-based WebMeshCore through the sandbox demo
+ * proxy; native builds resolve the real expo module. MeshCoreMock is
+ * untouched and stays the test/preview surface.
+ */
+export function getMeshCoreForPlatform(): MeshCore {
+  if (Platform.OS === 'web') {
+    if (!webCached) webCached = new WebMeshCore(MESH_DEMO_CONFIG);
+    return webCached;
+  }
+  return getMeshCore();
+}
 
 /** Lazy native resolution; throws a clear error when the native build is absent. */
 export function getMeshCore(): MeshCore {

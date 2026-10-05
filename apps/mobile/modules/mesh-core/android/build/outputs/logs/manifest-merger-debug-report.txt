@@ -1,0 +1,46 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:19:1-47:12
+INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:19:1-47:12
+	package
+		INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml
+	xmlns:tools
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:20:11-57
+	xmlns:android
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:19:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:23:5-67
+	android:name
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:23:22-64
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:26:5-79
+	android:name
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:26:22-76
+uses-permission#android.permission.ACCESS_LOCAL_NETWORK
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:30:5-31:45
+	tools:targetApi
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:31:22-42
+	android:name
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:30:22-76
+uses-permission#android.permission.NEARBY_WIFI_DEVICES
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:35:5-37:51
+	android:usesPermissionFlags
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:36:22-68
+	tools:targetApi
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:37:22-48
+	android:name
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:35:22-75
+queries
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:43:5-45:15
+package#com.tailscale.ipn
+ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:44:9-53
+	android:name
+		ADDED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml:44:18-50
+uses-sdk
+INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml
+INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /home/z/my-project/apps/mobile/modules/mesh-core/android/src/main/AndroidManifest.xml

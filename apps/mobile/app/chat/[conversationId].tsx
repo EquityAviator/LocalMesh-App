@@ -1,15 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Banner, Composer, MessageBubble, PathBadge } from '../../src/ui/components';
 import { paletteFor } from '../../src/ui/theme';
 import { useThemeMode } from '../../src/ui/useThemeMode';
-import { chatsStore } from '../../src/state/chatsStore';
+import { chatsStore, setDraft } from '../../src/state/chatsStore';
 import { machinesStore } from '../../src/state/machinesStore';
 import { useStore } from '../../src/state/useStore';
 import { connStateToChip, tierToPath } from '../../src/features/machines/view';
+import { refreshAgentData } from '../../src/features/machines/live';
+import { cancelStream, sendMessage } from '../../src/features/chat/send';
 import { composerVM } from '../../src/features/chat/composer';
-import { setDraft } from '../../src/state/chatsStore';
 
 /** §6.5 Chat — route row pinned, bubbles, composer swaps Send/Stop. */
 export default function ChatScreen(): React.ReactElement {
@@ -34,10 +35,19 @@ export default function ChatScreen(): React.ReactElement {
     streaming: !!stream,
   });
 
+  // Direct navigation to a chat still needs the live snapshot (models, conn).
+  useEffect(() => {
+    if (Platform.OS === 'web') void refreshAgentData();
+  }, []);
+
   const rows = [
     ...thread.map((m) => ({ kind: 'message' as const, id: m.id, message: m })),
-    ...(stream ? [{ kind: 'stream' as const, id: `${stream.messageId}-live`, visible: stream.visible }] : []),
+    ...(stream ? [{ kind: 'stream' as const, id: `${stream.messageId}-live`, visible: stream.visible, meta: stream.meta }] : []),
   ];
+
+  const streamHeader = stream?.meta
+    ? [stream.meta.model, stream.meta.backend].filter(Boolean).join(' · ')
+    : (conversation?.modelRef ?? agent?.displayName);
 
   return (
     <>
@@ -52,7 +62,7 @@ export default function ChatScreen(): React.ReactElement {
         </View>
 
         {state.s === 'UNREACHABLE' || state.s === 'PIN_MISMATCH' ? (
-          <Banner tone="error" text="Connection dropped. Your reply so far is saved." palette={palette} actionLabel="Retry" />
+          <Banner tone="error" text="Connection dropped. Your reply so far is saved." palette={palette} actionLabel="Retry" onAction={() => void refreshAgentData()} />
         ) : null}
 
         <FlatList
@@ -67,7 +77,7 @@ export default function ChatScreen(): React.ReactElement {
                   role="assistant"
                   text={`${item.visible}▍`}
                   headerDot={palette.pathWifi}
-                  headerText={conversation?.modelRef ?? agent?.displayName}
+                  headerText={streamHeader}
                   palette={palette}
                 />
               );
@@ -95,12 +105,8 @@ export default function ChatScreen(): React.ReactElement {
           <Composer
             value={draft}
             onChangeText={(t) => setDraft(conversationId, t)}
-            onSend={() => {
-              /* send flow wired through the use-case layer in WP-12 */
-            }}
-            onStop={() => {
-              /* Stop → SM-STREAM cancel (§15.3) */
-            }}
+            onSend={() => sendMessage(conversationId, draft)}
+            onStop={() => cancelStream(conversationId)}
             streaming={!!stream}
             disabled={vm.sendDisabled}
             placeholder={vm.placeholder}

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { PrimaryButton } from '../../src/ui/components';
-import { paletteFor } from '../../src/ui/theme';
-import { useThemeMode } from '../../src/ui/useThemeMode';
-import { buildDoctorReport, runDoctor, type DoctorCheck } from '../../src/features/diagnostics/doctor';
-import { SystemClock } from '../../src/domain/connection/clock';
-import { machinesStore } from '../../src/state/machinesStore';
-import { useStore } from '../../src/state/useStore';
+import { PrimaryButton } from '../src/ui/components';
+import { paletteFor } from '../src/ui/theme';
+import { useThemeMode } from '../src/ui/useThemeMode';
+import { buildDoctorReport, runDoctor, type DoctorCheck, type DoctorDeps } from '../src/features/diagnostics/doctor';
+import { buildWebDoctorDeps } from '../src/features/diagnostics/live';
+import { SystemClock } from '../src/domain/connection/clock';
+import { machinesStore } from '../src/state/machinesStore';
+import { useStore } from '../src/state/useStore';
 
 /**
  * §18.4 Diagnostics screen — runs the ordered ladder and offers the shareable
@@ -16,7 +17,7 @@ import { useStore } from '../../src/state/useStore';
 export default function DoctorScreen(): React.ReactElement {
   const { mode } = useThemeMode();
   const palette = paletteFor(mode);
-  const { agents, conn } = useStore(machinesStore);
+  const { agents } = useStore(machinesStore);
   const [checks, setChecks] = useState<DoctorCheck[] | null>(null);
   const [running, setRunning] = useState(false);
   const agent = agents[0];
@@ -25,9 +26,10 @@ export default function DoctorScreen(): React.ReactElement {
     setRunning(true);
     try {
       const clock = new SystemClock();
-      // The probes below are wired to mesh-core in WP-11; until the native
-      // build lands they report structurally honest "not available" results.
-      const results = await runDoctor({
+      // On the web demo the ladder runs through the fetch transport (§17.9);
+      // native keeps the structurally honest "not available" results until
+      // the probes are wired to mesh-core in WP-11.
+      const deps: DoctorDeps = Platform.OS === 'web' ? buildWebDoctorDeps(clock, agent) : {
         clock,
         getNetwork: async () => ({ transport: 'none', vpnActive: false, metered: false }),
         getPermission: async () => 'unknown',
@@ -38,7 +40,8 @@ export default function DoctorScreen(): React.ReactElement {
         authCheck: async () => ({ ok: false }),
         healthCheck: async () => ({ ok: false }),
         backendStatus: async () => ({ ok: false, summary: 'not available yet' }),
-      });
+      };
+      const results = await runDoctor(deps);
       setChecks(results);
     } finally {
       setRunning(false);

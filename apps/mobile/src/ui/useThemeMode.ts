@@ -1,4 +1,3 @@
-import React from 'react';
 import { useColorScheme } from 'react-native';
 import type { ThemeMode } from './theme';
 

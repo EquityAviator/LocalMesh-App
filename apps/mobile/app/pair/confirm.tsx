@@ -23,7 +23,7 @@ export default function PairConfirmScreen(): React.ReactElement {
     return parsed.ok ? parsed.payload : null;
   }, [params.payload]);
 
-  const [sas, setSas] = useState('482917');
+  const [sas] = useState('482917');
   const [matched, setMatched] = useState<boolean | null>(null);
   const [name, setName] = useState<string>(payload?.name ?? '');
   const [named, setNamed] = useState(false);
