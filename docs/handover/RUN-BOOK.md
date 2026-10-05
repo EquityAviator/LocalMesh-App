@@ -61,7 +61,11 @@ bunx expo prebuild --platform android --no-install
 #   org.gradle.workers.max=2 ; org.gradle.parallel=false ; caching=true
 
 cd android && ./gradlew assembleDebug --no-daemon
-# APK: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+# Full-APK result in THIS sandbox: physically blocked by the 10 GB disk
+# ceiling (NDK 2.0GB + gradle transforms ~1.6GB + OS image). VERIFIED instead:
+#   :mesh-core:assembleDebug  → BUILD SUCCESSFUL (48s) — the §11.2 Kotlin
+#   compiles after 6 toolchain-level fixes; AAR output produced.
+# Full APK: build on an owner machine (§2b) — recipe unchanged.
 ```
 
 Install on a phone (owner machine, USB debugging on):
