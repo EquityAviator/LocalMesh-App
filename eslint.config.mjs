@@ -51,6 +51,10 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
   ignores: [
     "node_modules/**",
     ".next/**",
+    "public/**",           // generated: virtual-device bundles are served by src/app/virtual-device route
+    "apps/mobile/dist/**", // generated: expo web export (source of the virtual device)
+    "apps/mobile/node_modules/**",
+    "apps/mobile/android/**", // generated: expo prebuild output
     "out/**",
     "build/**",
     "next-env.d.ts",
