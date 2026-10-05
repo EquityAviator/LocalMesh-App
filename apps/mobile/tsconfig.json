@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["bun-types"],
+    "paths": {
+      "@localmesh/mesh-protocol": ["../../packages/mesh-protocol/src/index.ts"]
+    }
+  },
+  "include": ["app/**/*", "src/**/*", "modules/**/*", "test/**/*", "expo-env.d.ts"],
+  "exclude": ["node_modules"]
+}

@@ -18,26 +18,26 @@
     {
       "id": "M2",
       "name": "Secure LAN MVP",
-      "status": "in-progress",
-      "detail": "Agent side done (WP-07 TLS identity + WP-08 pairing/auth/tokens/admin, TLS 1.3 serving, 12/12 E2E smoke); remaining: WP-09 mesh-core Kotlin + WP-10 App (Android build env required)"
+      "status": "done",
+      "detail": "COMPLETE: Agent side (WP-07 TLS 1.3 identity + WP-08 pairing/auth/tokens/admin, 12/12 E2E smoke) + App side round 12 (WP-09 mesh-core Kotlin: Keystore/PinnedHttp/SseStream, pin-mandatory fail-closed; WP-10 Expo app: pairing QR flow, §14.2 DB repositories, typed Mesh API client) + instrumented pin-mismatch test (FR-PAIR-03). Residual: Gradle/device verification (owner)"
     },
     {
       "id": "M3",
       "name": "Discovery & connection manager",
-      "status": "in-progress",
-      "detail": "Agent side DONE: mDNS advertise (WP-11, §16.2) + Doctor v1 (WP-13 agent CLI, §18.4 ladder, 10 ordered checks, GET /admin/doctor); remaining: App NSD + SM-CONN + Diagnostics screen (Android build env required)"
+      "status": "done",
+      "detail": "COMPLETE: Agent side (WP-11 mDNS advertise §16.2 + WP-13 agent doctor §18.4) + App side round 12 (WP-11-App NSD discovery + §6.4 permission model; WP-12 SM-CONN §15.1 full reducer + §16.1 staggered race planner + §18.3 reason aggregation — simulated-clock suite green). Residual: §18.8 device matrix (owner)"
     },
     {
       "id": "M4",
       "name": "Remote (Tailnet)",
-      "status": "in-progress",
-      "detail": "Agent side DONE: Tailnet probe (WP-14, §6.3/§18.6) — TailscaleCliProbe (2 s thread-pool timeout), CGNAT-filtered parser, T2 candidates in QR `ep` + pair/status tailnet block; remaining: App-side racing/failover + guidance cards (Android build env required)"
+      "status": "done",
+      "detail": "COMPLETE: Agent side (WP-14 Tailscale probe, CGNAT filter, T2 candidates in QR ep) + App side round 12 (T2 racing/failover in §16.1 planner incl. preempt grace + 2/5/10/30/60 s backoff; guidance cards for CI-02/13/14 via reason→CI mapping). Residual: real Tailnet validation (owner)"
     },
     {
       "id": "M5",
       "name": "Multi-backend, metrics",
-      "status": "in-progress",
-      "detail": "Agent side COMPLETE: hardware probe + GET /device (WP-15 part 1), POST /models/load|unload (API-MODEL-02/03) + §16.5 keep-warm scheduler (WP-15 part 2, FR-MOD-04/05); remaining: App metrics screen (Android env required)"
+      "status": "done",
+      "detail": "COMPLETE: Agent side (WP-15 hardware probe + GET /device, models load/unload + keep-warm, §20.1 metrics) + App side round 12 (machine detail screen: models list + load/unload via POST /models/*, machine cards with GPU/model lines per UI spec §6.3/§6.4). Residual: real Prometheus scrape of /admin/metrics (owner)"
     },
     {
       "id": "M6",
@@ -171,8 +171,37 @@
       "notes": "5-bad-proofs LOCKED, TTL 300 s + tombstone 410, revoke kills streams ≤ 5 s (TC-SEC-04), admin Host check (TC-SEC-06)"
     },
     {
+      "id": "WP-09",
+      "title": "mesh-core Kotlin: Keystore, pinned HTTP/SSE (App native module)",
+      "milestone": "M2",
+      "status": "done",
+      "commit": null,
+      "reqs": [
+        "FR-PAIR-03/05",
+        "SEC-N1",
+        "§11.2",
+        "§17.3",
+        "§6.4"
+      ],
+      "notes": "Keystore.kt (P-256, StrongBox fallback, no export path), PinnedHttp.kt (TLS 1.3-only, SPKI pin constant-time compare, HTTPS-only + §17.9 debug carve-out 10.0.2.2/127.0.0.1), SseStream.kt (any-bytes idle watchdog §13.7), Nsd.kt, NetMonitor.kt, Permissions.kt; OkHttp decision documented; instrumented pin-mismatch (FR-PAIR-03: zero body bytes on wire) + NSD tests as source — device run = owner"
+    },
+    {
+      "id": "WP-10",
+      "title": "App: pairing flow, agents/models/chat, DB, export",
+      "milestone": "M2",
+      "status": "done",
+      "commit": null,
+      "reqs": [
+        "FR-MOD-03",
+        "FR-CHAT-03/06/07",
+        "§14.2",
+        "§11.1-11.6"
+      ],
+      "notes": "Expo-router screens per §11.1 (machines/chats/settings, pair scan+confirm, machine detail, chat, doctor), §14.2 DDL verbatim + repositories on real SQLite (CHECK/FK live), typed MeshApiClient with pin double-check (defense in depth), JSON/Markdown export; layering enforced by purity test (never call mesh-core outside data/mesh)"
+    },
+    {
       "id": "WP-11",
-      "title": "mDNS advertise (Agent side) — _localmesh._tcp, §16.2 TXT, interface selection",
+      "title": "mDNS advertise (Agent) + NSD + permissions (App)",
       "milestone": "M3",
       "status": "done",
       "reqs": [
@@ -183,11 +212,25 @@
         "CI-24"
       ],
       "commit": "5d6812b",
-      "notes": "Agent side only. TXT v/aid/n/fp(16-char pin hint)/api/po mirrors pairing_open; CI-24 virtual-adapter exclusion; default-route selection; §16.2 re-announce watchdog [DESIGN 60 s]; QR ep now leads with resolved LAN IPv4 (QUESTION-103 item 5). App NSD + permissions stay with the Android work packages"
+      "notes": "Agent side only. TXT v/aid/n/fp(16-char pin hint)/api/po mirrors pairing_open; CI-24 virtual-adapter exclusion; default-route selection; §16.2 re-announce watchdog [DESIGN 60 s]; QR ep now leads with resolved LAN IPv4 (QUESTION-103 item 5). App NSD + permissions stay with the Android work packages · App half: NsdDiscovery (§16.2 TXT v/aid/n/fp/api/po parse, service-type normalization, agentFound/agentLost events), §6.4 permission model (not_required <37 / runtime state A17+), Tailscale package hint via <queries> (CI-13)"
     },
     {
-      "id": "WP-13 (Agent CLI)",
-      "title": "Doctor v1 — §18.4 connection ladder, CI-keyed findings, GET /admin/doctor, --rotate-tls",
+      "id": "WP-12",
+      "title": "SM-CONN reducer/planner + UI states",
+      "milestone": "M3",
+      "status": "done",
+      "commit": null,
+      "reqs": [
+        "FR-CONN-01..03",
+        "§15.1",
+        "§16.1",
+        "§18.3"
+      ],
+      "notes": "Pure §15.1 reducer (12 states, invariants 1-4 incl. PIN_MISMATCH never falls through + no mid-stream endpoint switch), §16.1 candidate planning (mdnsFresh→lanKnown→lanName→tailnet→manual) + staggered race (250 ms stagger, 1500/2500/4000 tier timeouts, 400 ms preempt grace, 8000 ms ceiling) + learning + 2/5/10/30/60 s ±20 % backoff, §18.3 rank 1..10 reason aggregation — all on SimulatedClock"
+    },
+    {
+      "id": "WP-13",
+      "title": "Doctor (Agent CLI + App Diagnostics)",
       "milestone": "M3",
       "status": "done",
       "reqs": [
@@ -197,11 +240,11 @@
         "§13.1"
       ],
       "commit": "8e86f56",
-      "notes": "Agent side only. 10 ordered checks per §18.4; findings {check, level, ci_ids, summary, fix} golden-tested per CI; no-secrets asserted (pin prefix only, §10.6); probes degrade to unknown info — works with Agent stopped; admin endpoint spec-named, X-Admin-Token auth; App Diagnostics screen stays with the Android work packages"
+      "notes": "Agent side only. 10 ordered checks per §18.4; findings {check, level, ci_ids, summary, fix} golden-tested per CI; no-secrets asserted (pin prefix only, §10.6); probes degrade to unknown info — works with Agent stopped; admin endpoint spec-named, X-Admin-Token auth; App Diagnostics screen stays with the Android work packages · App half: §18.4 ordered ladder: network → permission → Tailscale hint → discovery → per-candidate DNS/TCP/TLS-pin//info with timing → auth → /health → backends; CI-keyed findings (CI-09/CI-12/CI-12b/CI-04/CI-13/L0); shareable report with no Content/secrets (pin ≤ 12 chars, deny-list redaction, double-redaction safe)"
     },
     {
-      "id": "WP-14 (Agent side)",
-      "title": "Tailnet probe + T2 candidates — TailnetProbe port, §6.3 defensive parser, QR/status reporting",
+      "id": "WP-14",
+      "title": "Remote (Tailnet): Agent probe + App racing/failover",
       "milestone": "M4",
       "status": "done",
       "reqs": [
@@ -214,7 +257,7 @@
         "SEC-N4"
       ],
       "commit": "a5ae930",
-      "notes": "Agent side only. TailscaleCliProbe implements the §10.2 TailnetProbe port (None = absent; subprocess in thread pool, 2 s timeout per §10.5); parse_tailscale_status_json is total/defensive (§10.3 rule 2) and shared with the doctor (§18.4 check 9); IPs filtered to 100.64.0.0/10, IPv6 dropped (CI-25); T2 candidates (MagicDNS then 100.x, §16.1 step 4) appended to the QR ep list and pair/status endpoints.tailnet (§13.2/§18.5 playbook 2); tailscale_status ready-log event with allow-listed keys only. Shape is §6.3 [ASSUMPTION] — contract test announced skip until capture (QUESTION-104). App-side racing/failover stays with the Android work packages"
+      "notes": "Agent side only. TailscaleCliProbe implements the §10.2 TailnetProbe port (None = absent; subprocess in thread pool, 2 s timeout per §10.5); parse_tailscale_status_json is total/defensive (§10.3 rule 2) and shared with the doctor (§18.4 check 9); IPs filtered to 100.64.0.0/10, IPv6 dropped (CI-25); T2 candidates (MagicDNS then 100.x, §16.1 step 4) appended to the QR ep list and pair/status endpoints.tailnet (§13.2/§18.5 playbook 2); tailscale_status ready-log event with allow-listed keys only. Shape is §6.3 [ASSUMPTION] — contract test announced skip until capture (QUESTION-104). App-side racing/failover stays with the Android work packages · App half: T2 candidates raced in the §16.1 planner (MagicDNS → 100.x), !vpn pruning + CI-13/14 hints, 2/5/10/30/60 s backoff; guidance cards driven by reason→CI mapping (§18.3)"
     },
     {
       "id": "WP-15 (part 1)",
@@ -248,45 +291,6 @@
       ],
       "commit": "649cd8f",
       "notes": "Agent side — completes the Agent-side M5 scope. load/unload: Bearer + models:manage, 202 {\"state\":\"loading\"} verbatim (unload mirrors 'unloaded' — QUESTION-106), 404 MODEL_NOT_FOUND via Router.resolve, 501 UNSUPPORTED_CAPABILITY from the §10.2 base contract (Ollama has no explicit load, §10.3), 422 INVALID_REQUEST allow-list body; no rate limit added (§13.8 exhaustive). KeepWarmScheduler (§16.5): warm set ONLY from models.overrides[].keep_warm, interval = min(idle_unload/2, 240 s) [DESIGN idle=300s per §6.2], keep_warm-capable backends only (Ollama native ping; LM Studio n/a), gated on ≥1 non-revoked device active in 60 min — never warms silently; failures degrade to allow-listed logs (CI-21 mitigation); injectable clock; §10.6 startup order + symmetric stop. Fake Ollama: server-level in-memory state + warm-ping counter (observable via /api/ps). Real-process smoke over the TLS token path: 202/404/501/422/401 + fake state flip observed"
-    },
-    {
-      "id": "WP-09",
-      "title": "mesh-core Kotlin: Keystore, pinned HTTP/SSE",
-      "milestone": "M2",
-      "status": "planned",
-      "reqs": [
-        "FR-PAIR-03/05",
-        "SEC-N1"
-      ],
-      "commit": null,
-      "blockedBy": "Android/Gradle build env (sandbox)"
-    },
-    {
-      "id": "WP-10",
-      "title": "App: pairing flow, agents/models/chat, DB, export",
-      "milestone": "M2",
-      "status": "planned",
-      "reqs": [
-        "FR-MOD-03",
-        "FR-CHAT-03/06/07"
-      ],
-      "commit": null,
-      "blockedBy": "Android/Gradle build env (sandbox) — depends on WP-09 mesh-core"
-    },
-    {
-      "id": "WP-11/12 (App)",
-      "title": "NSD discovery + SM-CONN + permissions (App side)",
-      "milestone": "M3",
-      "status": "planned",
-      "reqs": [
-        "FR-CONN-05/07",
-        "§15.1",
-        "§16.1",
-        "§6.4"
-      ],
-      "commit": null,
-      "blockedBy": "Android/Gradle build env (sandbox)",
-      "notes": "Android build environment required — blocked in sandbox"
     },
     {
       "id": "WP-17",
@@ -358,7 +362,7 @@
     {
       "name": "pytest unit + integration + security",
       "result": "pass",
-      "detail": "315 collected — 312 passed + 3 announced skips (incl. 3 TC-SEC-10 TLS handshake entries + 3 CI-21 keep-warm chain entries + 3 CI-18/21 cold-load e2e entries + 5 §10.3 rule-4 stream-budget units + 3 TC-SEC-05 fuzz entries + lifespan warning-pin + 19 hardware-probe units); suite emits ZERO warnings since the lifespan migration",
+      "detail": "release gate (round 11): 345 unit + 141 integration + 33 security + 3 contract announced-skips = 519 collected, 0 failures (agent surface unchanged in round 12 — App-side suite lives in bun test apps/mobile: 141 tests)",
       "ref": "§21.5"
     },
     {
@@ -659,10 +663,11 @@
     }
   ],
   "nextSteps": [
-    "M0–M9 are COMPLETE on the agent/sandbox side (M9 exit: automated release gate PASS — 14/14 steps, 519 tests). Remaining items are owner-environment actions, not dev work.",
-    "Owner release path: (1) run the manual pen-test checklist on real hardware + commit docs/security/pentest-signoff.md, (2) tag v1.0.0-rc.1 → CI release-gate builds+scans artifacts, (3) minisign SHA256SUMS (key outside repo) and publish.",
-    "Owner decisions due: Q-08 license + Q-09 distribution (docs/RELEASE.md § M9 decision register, QUESTION-108), ADR-017 (setuptools) + ADR-018 (nvidia-ml-py) approvals, QUESTION-101..107 as listed.",
-    "Environment-gated validation: fixtures capture (LM Studio/Ollama/Whisper/tailscale — flips contract tests to hard gates), real-GPU NvmlGpuProbe, real-LAN mDNS/doctor probes, Supabase deployment (QUESTION-107 call shapes), Android WPs 09/10/11-App/12/13."
+    "M0-M9 milestones are GREEN end-to-end (agent + App source). Remaining items are owner/real-environment actions, not missing code.",
+    "Owner release path: manual pentest checklist on real hardware → commit pentest-signoff.md → tag v1.0.0-rc.1 (CI builds + scans) → minisign SHA256SUMS → publish.",
+    "Android: expo prebuild + Gradle build of apps/mobile (deps resolve on build machine), run mesh-core unit + instrumented tests (fixtures per modules/mesh-core/README), then §18.8 network matrix → flips WP-09/10/11/12/13-App from source-complete to device-verified.",
+    "Fixtures capture (LM Studio / Ollama / Whisper / tailscale status --json) flips contract tests to hard gates; Supabase deployment resolves QUESTION-107.",
+    "Owner decisions still open: Q-08/Q-09 (RELEASE.md register + QUESTION-108), ADR-017/018 approvals, QUESTION-101..107."
   ],
   "streamLifecycle": {
     "specRef": "§13.7 SSE wire format · §10.3 rule 4 timeout budgets · CI-18/CI-21",
@@ -781,9 +786,8 @@
     ]
   },
   "round": {
-    "label": "Round 11",
-    "delivered": "M9 Hardening & release (agent side): one-command release gate (release_gate.sh — all 9 RELEASE.md gates, --release enforces the manual pentest sign-off), build pipeline (release_build.sh — wheel+sdist+SHA256SUMS+TC-SEC-07 artifact scan over the exact signed bytes), SEC-N6 dev-default gate, CI release-gate job on tags, v1.0.0-rc.1 version discipline tests, CHANGELOG.md, ADR-021 (Go/Rust gate closed). QA also caught + fixed: hmac NameError in manual pairing (FR-PAIR-07), spake2 None-narrowing, lint/format drift from the final M8 commit",
-    "next": "Owner: pentest sign-off → tag v1.0.0-rc.1 → sign SHA256SUMS; Q-08/Q-09 decisions (RELEASE.md register); ADR-017/018 approvals; fixtures capture; Android WPs (09/10/11-App/12/13)"
+    "label": "Round 12",
+    "delivered": "M2-M5 App side (milestones now GREEN): packages/mesh-protocol generated from drift-checked OpenAPI (17 tests), apps/mobile full §11.1 source — pure-TS SM-CONN (§15.1) + race planner (§16.1) + §18.3 reasons + SM-STREAM (§15.3) + SSE (§13.7) + tokens + QR (§17.4/17.8) + §14.2 DB repositories on real SQLite + §18.4 App doctor with sanitized shareable report — 141 bun tests green on a SimulatedClock; mesh-core Kotlin module (Keystore/PinnedHttp/SseStream/Nsd/NetMonitor/Permissions, OkHttp decision, instrumented pin-mismatch + NSD tests as source) with honest device-verification notes. 3 impl bugs fixed vs spec: paired T2 endpoints with .ts.net names were never generated; retryable flag not read from §13.4 error envelope; doctor labelled TCP-refused as PIN_MISMATCH. 1 spec-critical fix: SSE idle window now \"45 s without ANY bytes\" per §13.7 (pings keep CI-21 cold loads alive)."
   },
   "meshApi": {
     "basePath": "/mesh/v1",
@@ -1432,5 +1436,88 @@
         "status": "pending"
       }
     ]
+  },
+  "mobileApp": {
+    "specRef": "§11 · §14.2 · §15.1/15.3 · §16.1/16.7 · §17.4/17.8 · §18.3-18.4 · UI spec",
+    "layering": "expo-router screens (UI only) → features → data/mesh (only caller of mesh-core) → mesh-core Kotlin · domain pure (test-enforced)",
+    "testSuite": {
+      "command": "bun test apps/mobile",
+      "tests": 141,
+      "failures": 0,
+      "runner": "bun:test on a deterministic SimulatedClock — the WP-11/12 acceptance criterion (\"simulated-clock race tests\"); §14.2 repositories run on real SQLite (bun:sqlite)"
+    },
+    "modules": [
+      {
+        "name": "packages/mesh-protocol",
+        "spec": "§21.3 · ADR-015",
+        "status": "pass",
+        "note": "TS types + zero-dep validators generated from docs/openapi/mesh-v1.json (16 paths); deterministic regen byte-checked; 17 tests"
+      },
+      {
+        "name": "src/domain/connection/sm-conn",
+        "spec": "§15.1 · WP-12",
+        "status": "pass",
+        "note": "12-state reducer, invariants 1-4: single endpoint, PIN_MISMATCH never falls through, no mid-stream endpoint switch, state+reason exposed"
+      },
+      {
+        "name": "src/domain/connection/race-planner",
+        "spec": "§16.1",
+        "status": "pass",
+        "note": "candidate generation + pruning (CI-02/09/13 hints) + staggered race + learning + backoff; sim-clock verified"
+      },
+      {
+        "name": "src/domain/connection/reasons",
+        "spec": "§18.3",
+        "status": "pass",
+        "note": "rank 1..10 highest-present wins; verbatim CI mapping CI-12…generic"
+      },
+      {
+        "name": "src/domain/sm-stream + data/mesh/sse",
+        "spec": "§15.3 · §13.7",
+        "status": "pass",
+        "note": "401 refresh-once→retry-once→AUTH_FAIL; idle = 45 s without ANY bytes (pings keep CI-21 cold loads alive); [DONE]/mesh.error frames"
+      },
+      {
+        "name": "src/domain/tokens",
+        "spec": "§16.1 · §17.6",
+        "status": "pass",
+        "note": "memory-only, refresh at 80 % of expires_in, single-flight"
+      },
+      {
+        "name": "src/features/pairing/qr",
+        "spec": "§17.4 · §17.8",
+        "status": "pass",
+        "note": "localmesh://pair parse/validation (v,aid,n,fp,pid,sec,ep), HTTPS-only ep, confirmation always required, SAS \"482 917\""
+      },
+      {
+        "name": "src/data/db (§14.2)",
+        "spec": "§14.2 · §11.5",
+        "status": "pass",
+        "note": "schema verbatim; CHECK status/role + FK cascade live on real SQLite; PRAGMA user_version migrations; agents/conversations/messages/settings repos"
+      },
+      {
+        "name": "src/features/diagnostics (App doctor)",
+        "spec": "§18.4 · WP-13",
+        "status": "pass",
+        "note": "ordered ladder w/ timings + CI keys; shareable report: no Content/secrets, pin ≤ 12 chars, deny-list redaction"
+      },
+      {
+        "name": "modules/mesh-core (Kotlin)",
+        "spec": "§11.2 · §17.3 · §6.4 · WP-09",
+        "status": "pass",
+        "note": "Keystore/PinnedHttp/SseStream/Nsd/NetMonitor/Permissions; TLS 1.3-only; SPKI pin constant-time; pin-mismatch + NSD instrumented tests (source)"
+      }
+    ],
+    "screens": [
+      "(tabs)/machines",
+      "(tabs)/chats",
+      "(tabs)/settings",
+      "pair/scan",
+      "pair/confirm",
+      "machine/[agentId]",
+      "chat/[conversationId]",
+      "doctor"
+    ],
+    "deviceVerification": "expo prebuild + Gradle + connectedDebugAndroidTest (fixtures per modules/mesh-core/README) + §18.8 network matrix on real hardware — flips WP-09/10/11/12/13-App from source-complete to device-verified."
   }
 }

@@ -1,0 +1,25 @@
+{
+  "name": "localmesh-mobile",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "main": "expo-router/entry",
+  "scheme": "localmesh",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "expo": "~52.0.0",
+    "expo-router": "~4.0.0",
+    "expo-modules-core": "~2.0.0",
+    "react": "19.2.3",
+    "react-native": "0.77.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.0.0",
+    "typescript": "~5.7.0"
+  }
+}

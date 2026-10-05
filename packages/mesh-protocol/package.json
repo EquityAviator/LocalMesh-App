@@ -1,0 +1,18 @@
+{
+  "name": "@localmesh/mesh-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated TypeScript types + runtime validators for the LocalMesh Mesh API (/mesh/v1), regenerated from docs/openapi/mesh-v1.json per LM-ARCH-001 §21.3 and ADR-015.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "gen": "bun scripts/generate.ts",
+    "test": "bun test"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

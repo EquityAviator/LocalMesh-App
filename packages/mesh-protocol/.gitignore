@@ -1,0 +1,5 @@
+# The root .gitignore has a bare `test` rule (line 49) that matches any
+# file/directory named `test` — it would silently exclude this package's bun
+# tests. Re-include them (ADR-015: the determinism/drift tests are part of the
+# generated-package contract).
+!test/

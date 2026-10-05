@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "LocalMesh",
+    "slug": "localmesh",
+    "scheme": "localmesh",
+    "version": "1.0.0-rc.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0E1018"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.localmesh.mobile"
+    },
+    "android": {
+      "package": "app.localmesh.mobile",
+      "allowBackup": false,
+      "blockedPermissions": ["android.permission.INTERNET_BACKUP"],
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

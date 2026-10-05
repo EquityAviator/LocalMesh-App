@@ -1,0 +1,67 @@
+// mesh-core — Expo native module for LocalMesh AI (LM-ARCH-001 §11.2)
+//
+// Kotlin implementation of the normative MeshCore TypeScript contract (§11.2).
+// Owned by Task 2-c; the TS wrapper (index.ts / src/MeshCore.types.ts) is owned by Task 2-b.
+//
+// Dependency decision (OkHttp vs HttpURLConnection) + verification status: see README.md.
+
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def safeExtGet = { name, fallback ->
+    rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+}
+
+android {
+    namespace 'ai.localmesh.meshcore'
+    compileSdk safeExtGet('compileSdk', 37)          // §6.4: Android 17 (targetSdk 37) local-network model
+
+    defaultConfig {
+        minSdk safeExtGet('minSdkVersion', 29)
+        targetSdk safeExtGet('targetSdkVersion', 37) // §6.4: ACCESS_LOCAL_NETWORK runtime permission regime
+        consumerProguardFiles 'consumer-rules.pro'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildFeatures {
+        // BuildConfig.DEBUG gates the §17.9 debug-only cleartext carve-out (10.0.2.2 / 127.0.0.1).
+        // Release app builds produce release library variants where DEBUG == false → carve-out closed.
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    // Expo modules core: Module/ModuleDefinition bridge, Events, Promise, Permissions API.
+    // Resolved via Expo autolinking (settings.gradle include of ':expo-modules-core').
+    implementation project(':expo-modules-core')
+
+    // §11.2 pinned HTTP + pinned SSE transport.
+    // Decision: OkHttp over HttpURLConnection — see README "Dependency decision" for the justification
+    // and the HttpURLConnection tradeoff notes.
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // Pure-Kotlin unit tests (run without a device): B64UrlTest, QrPayloadTest.
+    testImplementation 'junit:junit:4.13.2'
+
+    // Instrumented tests (need a device/emulator): pin-mismatch / pin-ok / cleartext / TLS 1.3 / SSE.
+    // okhttp-tls gives HeldCertificate/HandshakeCertificates to stage a local TLS agent under test.
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    androidTestImplementation 'com.squareup.okhttp3:okhttp-tls:4.12.0'
+}
