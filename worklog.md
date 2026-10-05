@@ -710,3 +710,27 @@ Work Log:
 
 Stage Summary:
 - M0–M9 all green AND now: real toolchain-verified Kotlin (AAR builds), interactive virtual device running the real app against the real agent, full QA'd dashboard panel, named app (Local Mesh AI / ai.localmesh.app), 149+17+agent gates green, contextual handover docs ready for the owner's local coding agent. Owner residuals unchanged: device matrix §18.8, fixtures, pentest+release, ADR approvals.
+
+---
+Task ID: R14-OSS-PUBLISH
+Agent: Z.ai Code (main agent, session web-70b12970)
+Task: Publish the repository to https://github.com/EquityAviator/LocalMesh-App as a fully adjusted open-source project (README, license, contributing/conduct/security docs, PR + issue templates, repo metadata), per owner directive ("push that on main and adjust it accordingly as a whole open source project").
+
+Work Log:
+- Analyzed the repo before publishing: 599 tracked files; verified git history never contained real secrets (.env only ever held a local DATABASE_URL line).
+- Fixed SEC-N5 scanner false positive: added the missing `secrets-scan: allow(pem-private-key)` annotation on the instrumented-test PEM-header literal (fixture parser; no key material committed).
+- Fixed SEC-N1 scanner: implemented the documented §17.9 debug-only exception by Android source set — cleartext under `src/debug/` is a NOTICE (debug-variant-only), main/release remains a hard FAIL.
+- Resolved Q-08 (owner directive): license = Apache-2.0 (M9 decision-brief recommendation). Added LICENSE (full text), `agent/pyproject.toml` `license = "Apache-2.0"`, `docs/THIRD-PARTY-NOTICES.md` (zeroconf LGPL-2.1-or-later obligations, CON-03), updated QUESTION-108 + RELEASE.md decision register.
+- Wired the two CI placeholder gates that activate now that the projects exist: npm audit (apps/mobile) + Android debug APK build (JDK 17 + bun frozen lockfile + gradlew assembleDebug).
+- OSS hygiene: untracked sandbox artifacts (.env, tool-results/, .zscripts/, research/ duplicate of docs/spikes evidence, upload/, download/, qa-*.png, --width); moved founding docs to docs/spec/ (ARCHITECTURE-DESIGN, ANDROID-UI-SPECIFICATION) and docs/research/ (feasibility + deep-research reports); extended .gitignore.
+- DISCOVERY: the publishing fine-grained PAT lacks the "Workflows" permission — GitHub rejects any push whose ref-diff creates .github/workflows/*.yml. Mitigation: relocated the fully wired pipeline to docs/ci/PR-GATE.yml with a one-command restore path in docs/ci/README.md (restore as PR once the token includes the Workflows permission).
+- Pushed full history to main (replaced the GitHub auto-init MIT placeholder per Q-08 Apache-2.0 decision; force-with-lease pinned to the auto-init SHA).
+- OSS surface delivered via PROPER PR FLOW: branch `docs/open-source` → PR #1 → merged (merge commit a10cd65). README (pitch, architecture diagram, M0–M9 table, quickstart, gate chain), CONTRIBUTING (spec-driven workflow, gate commands, commit style), SECURITY (private advisories, scope), CODE_OF_CONDUCT (Covenant 2.1), .github PR/issue templates (SEC-N checklist, Content-redaction rule).
+- Repo metadata set via API: description, topics (local-llm, privacy, android, fastapi, ollama, tailscale, mdns, ...), merged-branch auto-delete enabled.
+- Local gates re-run and green before each commit: OpenAPI drift (required pinning sandbox pydantic/fastapi to 2.13.5/0.142.2 — sandbox venv was stale), cleartext, content-columns, secrets scans.
+
+Stage Summary:
+- github.com/EquityAviator/LocalMesh-App is PUBLIC: main = a10cd65 (PR #1 merged), Apache-2.0, full OSS onboarding surface, topics set.
+- Commits: a4f762e (publish readiness), 9553cda (CI staging under docs/ci), 885ed52 (OSS docs, merged via PR #1).
+- OPEN: CI workflow restoration needs a token with the Workflows permission (docs/ci/README.md has the exact commands); pentest sign-off + §18.8 real-device matrix unchanged; owner should ROTATE the fine-grained PAT since it was shared in chat.
+- Security note: the PAT was used inline in push URLs only (never persisted to .git/config, never committed).
