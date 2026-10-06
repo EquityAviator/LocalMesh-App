@@ -734,3 +734,22 @@ Stage Summary:
 - Commits: a4f762e (publish readiness), 9553cda (CI staging under docs/ci), 885ed52 (OSS docs, merged via PR #1).
 - OPEN: CI workflow restoration needs a token with the Workflows permission (docs/ci/README.md has the exact commands); pentest sign-off + §18.8 real-device matrix unchanged; owner should ROTATE the fine-grained PAT since it was shared in chat.
 - Security note: the PAT was used inline in push URLs only (never persisted to .git/config, never committed).
+
+---
+Task ID: R15-ARCH-PDF
+Agent: Z.ai Code (main agent, session web-70b12970)
+Task: Produce the complete architectural document as a PDF (stack, developed features, per-module file maps, networking/connection, Android + PC sides, local studios integration, whole-system picture).
+
+Work Log:
+- Gathered verified facts from the repo: full agent/app/Kotlin/protocol file inventories, OpenAPI endpoint list (17), admin API groups (21), Mesh API paths, DB tables, mDNS 16.2 spec (service type, TXT keys), SM-CONN 11 states, token 80% refresh, task retention <=1h, pinned dependency versions, expo/RN/gradle versions.
+- Followed the pdf skill Report pipeline: read fonts.md, report.md (full), cover.md (full), palette.md, typography.md, overflow.md, charts.md, pagination.md; chapter numbering plan output before code (cover/TOC unnumbered, body 1-13 + appendices).
+- Built 3 architecture diagrams (system overview, connection lifecycle, chat streaming data path) as HTML -> html2poster.js -> PDF -> pypdfium2 PNG @2x; fixed Figure 1 arrow/label overlaps by switching to absolute layout with labels stacked inside column gaps.
+- Built Crystal Blue cover (Template 07) - passed poster_validate + cover_validate (0 overlaps), rendered at 794px.
+- Body via ReportLab TocDocTemplate + multiBuild: 13 chapters + Appendix A (Mesh API + Admin API tables) + Appendix B glossary; palette locked to Template 07 body subset; page bg painted; headers/footers; CondPageBreak orphan control; all table cells Paragraph-wrapped with ratio widths.
+- Fixed 2 QA findings: page-size mismatch (cover 595.9pt vs A4 - tightened normalize threshold to 0.2pt) and Helvetica bullet glyphs (bulletFontName=FreeSerif).
+- Final gates: pdf_qa PASS (all checks), toc.check PASS, font.check 0 issues, meta branded, 30 pages, ~668 KB.
+- Committed to repo (docs/LocalMesh-AI-Architecture-Reference.pdf + build sources under docs/architecture-reference/) and pushed to GitHub main (92d45f9).
+
+Stage Summary:
+- Deliverable: docs/LocalMesh-AI-Architecture-Reference.pdf (30 pages) - downloadable from GitHub; HTML sources committed for regeneration.
+- All governing facts verified against the repo; spec IDs used throughout (LM-ARCH-001 remains authoritative).
