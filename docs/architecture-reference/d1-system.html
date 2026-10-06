@@ -1,0 +1,57 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{margin:0;padding:0;background:#f5f8fc;font-family:'Segoe UI',Arial,Helvetica,sans-serif;}
+  .canvas{width:960px;height:560px;position:relative;background:#f5f8fc;}
+  .box{position:absolute;border:2px solid #1a4a7a;border-radius:10px;background:#e4ecf5;padding:12px 14px;box-sizing:border-box;height:290px;}
+  .box h3{margin:0 0 4px 0;font-size:15px;color:#142840;}
+  .box p{margin:0 0 6px 0;font-size:11px;color:#5a7a96;line-height:1.4;}
+  .chip{border:1px solid #2d7ab3;border-radius:6px;background:#ffffff;padding:5px 8px;margin-top:7px;font-size:11px;color:#142840;line-height:1.35;}
+  .chip b{color:#1a4a7a;}
+  .be{border:1px solid #c0d0e2;border-left:3px solid #2d7ab3;border-radius:6px;background:#f5f8fc;padding:5px 8px;margin-top:7px;font-size:11px;color:#142840;}
+  .cp{position:absolute;left:265px;top:400px;width:430px;height:78px;border:2px dashed #2d7ab3;background:#eef3fa;border-radius:10px;padding:10px 14px;box-sizing:border-box;}
+  .cp h3{margin:0 0 3px 0;font-size:13.5px;color:#142840;} .cp p{margin:0;font-size:10.5px;color:#5a7a96;line-height:1.4;}
+  .lbl{position:absolute;font-size:10.5px;color:#1a4a7a;background:#f5f8fc;padding:1px 5px;font-weight:600;}
+  .tiers{position:absolute;left:24px;top:524px;font-size:11px;color:#1a4a7a;font-weight:600;}
+  svg{position:absolute;left:0;top:0;}
+</style></head><body><div class="canvas">
+  <div class="box" style="left:24px;top:40px;width:250px;">
+    <h3>Android App</h3>
+    <p><b>Local Mesh AI</b> (ai.localmesh.app)</p>
+    <div class="chip"><b>Expo / React Native UI</b> - 9 screens: Machines, Chats, Settings, Pairing, Chat, Doctor</div>
+    <div class="chip"><b>TS domain layer</b> - SM-CONN, SM-STREAM, race planner, reason ladder</div>
+    <div class="chip"><b>mesh-core (Kotlin)</b> - Keystore P-256, PinnedHttp, NSD, SSE</div>
+  </div>
+  <div class="box" style="left:330px;top:40px;width:320px;background:#eef3fa;">
+    <h3>Desktop Agent</h3>
+    <p>Python 3.12 + FastAPI - the only network-facing process on the PC.</p>
+    <div class="chip"><b>Security</b> - TLS 1.3 server, pairing, device tokens</div>
+    <div class="chip"><b>Mesh API /mesh/v1</b> - info, models, chat, tasks</div>
+    <div class="chip"><b>Core</b> - Registry, scheduler, router, RAG, Tasks</div>
+    <div class="chip"><b>Backend adapters</b> - LM Studio, Ollama, OpenAI-compat, Whisper</div>
+  </div>
+  <div class="box" style="left:706px;top:40px;width:230px;background:#ffffff;border-color:#2d7ab3;">
+    <h3>Local Backends</h3>
+    <p>The user's own inference engines.</p>
+    <div class="be"><b>LM Studio</b> - 127.0.0.1:1234</div>
+    <div class="be"><b>Ollama</b> - 127.0.0.1:11434</div>
+    <div class="be"><b>OpenAI-compatible</b> endpoints</div>
+    <div class="be"><b>Whisper</b> - audio transcription</div>
+  </div>
+  <div class="cp">
+    <h3>Control Plane (optional, M6)</h3>
+    <p>Metadata only - registry, heartbeat, revocation mirrors. Conversation Content never passes through any cloud component (CON-02, ADR-011).</p>
+  </div>
+  <svg width="960" height="560">
+    <defs><marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#1a4a7a"/></marker>
+    <marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2d7ab3"/></marker></defs>
+    <line x1="278" y1="150" x2="324" y2="150" stroke="#1a4a7a" stroke-width="2.5" marker-end="url(#a)"/>
+    <line x1="324" y1="185" x2="278" y2="185" stroke="#1a4a7a" stroke-width="2.5" marker-end="url(#a)"/>
+    <line x1="654" y1="150" x2="700" y2="150" stroke="#1a4a7a" stroke-width="2.5" marker-end="url(#a)"/>
+    <line x1="654" y1="185" x2="700" y2="185" stroke="#1a4a7a" stroke-width="2.5" marker-end="url(#a)"/>
+    <line x1="490" y1="334" x2="490" y2="394" stroke="#2d7ab3" stroke-width="2" stroke-dasharray="6,5" marker-end="url(#b)"/>
+  </svg>
+  <div class="lbl" style="left:270px;top:200px;width:60px;text-align:center;font-size:9px;line-height:1.5;">mDNS<br/>TLS 1.3<br/>SPKI pin<br/>device<br/>token</div>
+  <div class="lbl" style="left:652px;top:200px;width:52px;text-align:center;font-size:9px;line-height:1.5;">loopback<br/>only<br/>(SEC-N2)</div>
+  <div class="lbl" style="left:502px;top:356px;">metadata only - heartbeat / revocation</div>
+  <div class="tiers">Transport tiers - T0 dev loopback - T1 LAN (mDNS) - T2 Tailscale/VPN - T3 future relay (ADR-005)</div>
+</div></body></html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{margin:0;padding:0;background:#f5f8fc;font-family:'Segoe UI',Arial,Helvetica,sans-serif;}
+  .canvas{width:1000px;height:470px;position:relative;background:#f5f8fc;box-sizing:border-box;padding:24px;}
+  .lane{border:2px solid #1a4a7a;border-radius:12px;background:#eef3fa;padding:14px 16px;box-sizing:border-box;}
+  .lane h2{margin:0 0 10px 0;font-size:14px;color:#1a4a7a;letter-spacing:1px;}
+  .chain{display:flex;align-items:stretch;}
+  .n{flex:1 1 auto;min-width:100px;max-width:100%;border:1.5px solid #2d7ab3;border-radius:8px;background:#ffffff;padding:8px 9px;box-sizing:border-box;position:relative;}
+  .n + .n{margin-left:30px;}
+  .n + .n::before{content:'\2192';position:absolute;left:-24px;top:36%;font-size:17px;color:#2d7ab3;font-weight:700;}
+  .n b{display:block;font-size:12px;color:#142840;margin-bottom:3px;}
+  .n span{font-size:10.5px;color:#5a7a96;line-height:1.45;display:block;}
+  .gap{height:40px;position:relative;}
+  .gap svg{position:absolute;left:60px;top:0;}
+  .down{font-size:11px;color:#1a4a7a;font-weight:600;}
+</style></head><body><div class="canvas">
+  <div class="lane">
+    <h2>REQUEST PATH (one POST, streaming response)</h2>
+    <div class="chain">
+      <div class="n"><b>Composer</b><span>chat/[conversationId] screen; user edits prompt</span></div>
+      <div class="n"><b>Send pipeline</b><span>features/chat: optimistic message, request body (model, messages, stream)</span></div>
+      <div class="n"><b>mesh-core bridge</b><span>PinnedHttp TLS 1.3 + SPKI pin; Device Token header</span></div>
+      <div class="n"><b>Mesh API</b><span>POST /mesh/v1/chat/completions; auth challenge checks, rate limit</span></div>
+      <div class="n"><b>Scheduler</b><span>§16.4 admission, keep-warm §16.5, model resolution</span></div>
+      <div class="n"><b>Adapter</b><span>lmstudio / ollama / openai_compat translate to backend HTTP</span></div>
+    </div>
+  </div>
+  <div class="gap">
+    <svg width="900" height="40">
+      <defs><marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2d7ab3"/></marker></defs>
+      <path d="M 840 6 L 840 20 L 60 20 L 60 34" stroke="#2d7ab3" stroke-width="2" fill="none" stroke-dasharray="6,5" marker-end="url(#a)"/>
+    </svg>
+    <div class="down" style="position:absolute;left:390px;top:9px;">loopback HTTP to LM Studio :1234 / Ollama :11434 — SSE chunks return</div>
+  </div>
+  <div class="lane">
+    <h2>RESPONSE PATH (SSE frames, same connection)</h2>
+    <div class="chain">
+      <div class="n"><b>Backend events</b><span>OpenAI-style chat.completion.chunk deltas</span></div>
+      <div class="n"><b>Agent SSE writer</b><span>normalizes to mesh frames: default chunk, mesh.meta, mesh.stats, mesh.error</span></div>
+      <div class="n"><b>SseStream (Kotlin)</b><span>frame parser, timeout + reconnect semantics</span></div>
+      <div class="n"><b>SM-STREAM</b><span>§15.3 reducer: token append, usage, errors, cancel</span></div>
+      <div class="n"><b>Renderer</b><span>§16.7 pipeline throttles re-renders; final message persisted</span></div>
+    </div>
+  </div>
+  <div class="gap" style="height:26px;">
+    <div class="down" style="left:0;top:0;">Cancellation: DELETE /mesh/v1/requests/{request_id} or app background — SM-STREAM emits cancel; adapter aborts the backend request. Revocation mid-stream (§15.6) tears the stream down immediately.</div>
+  </div>
+</div></body></html>

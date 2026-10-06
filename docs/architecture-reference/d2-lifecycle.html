@@ -1,0 +1,22 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{margin:0;padding:0;background:#f5f8fc;font-family:'Segoe UI',Arial,Helvetica,sans-serif;}
+  .canvas{width:1000px;height:300px;position:relative;background:#f5f8fc;box-sizing:border-box;padding:26px;}
+  .steps{display:flex;gap:0;align-items:stretch;}
+  .step{flex:1 1 auto;min-width:120px;max-width:100%;border:2px solid #1a4a7a;border-radius:10px;background:#e4ecf5;padding:12px 12px 10px 12px;box-sizing:border-box;position:relative;}
+  .step + .step{margin-left:34px;}
+  .step + .step::before{content:'\2192';position:absolute;left:-27px;top:44%;font-size:20px;color:#2d7ab3;font-weight:700;}
+  .num{display:inline-block;width:22px;height:22px;border-radius:50%;background:#1a4a7a;color:#fff;font-size:12px;text-align:center;line-height:22px;font-weight:700;margin-bottom:6px;}
+  .step h3{margin:0 0 5px 0;font-size:14px;color:#142840;}
+  .step p{margin:0;font-size:11px;color:#5a7a96;line-height:1.5;}
+  .note{margin-top:16px;border-left:3px solid #2d7ab3;background:#eef3fa;padding:8px 12px;font-size:11.5px;color:#142840;border-radius:0 6px 6px 0;}
+</style></head><body><div class="canvas">
+  <div class="steps">
+    <div class="step"><span class="num">1</span><h3>Discover</h3><p>Agent advertises <b>_localmesh._tcp</b> (mDNS). TXT carries aid, display name, and an SPKI-pin hint (untrusted; TLS verifies the real pin).</p></div>
+    <div class="step"><span class="num">2</span><h3>Pair</h3><p>App scans the Agent QR (one-time Pairing Secret). Owner approves on the PC (admin console). Trust binding FR-PAIR-03.</p></div>
+    <div class="step"><span class="num">3</span><h3>Trust</h3><p>TLS 1.3-only with SPKI pinning. App generates a P-256 device key inside the Android Keystore; Agent issues an opaque Device Token.</p></div>
+    <div class="step"><span class="num">4</span><h3>Connect</h3><p>SM-CONN runs the §16.1 staggered race across endpoints (LAN first, Tailnet next); token refresh is scheduled at 80% of lifetime.</p></div>
+    <div class="step"><span class="num">5</span><h3>Stream</h3><p>Chat runs over SSE (SM-STREAM): unnamed chunks + mesh.meta / mesh.stats / mesh.error frames; cancellation and revocation handled mid-stream.</p></div>
+  </div>
+  <div class="note"><b>Every step is stateless-safe:</b> any failure lands in the §18.3 reason ladder (UNREACHABLE, PIN_MISMATCH, REVOKED, BLOCKED_PERMISSION, ...) and the Doctor walks the same ladder top-down to explain it.</div>
+</div></body></html>
